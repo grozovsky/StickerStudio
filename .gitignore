@@ -1,0 +1,9 @@
+# бинарные артефакты — распространяются через Releases
+*.exe
+*.zip
+ffmpeg.exe
+src/ffmpeg.exe.gz
+
+# временное
+*.tmp
+Thumbs.db

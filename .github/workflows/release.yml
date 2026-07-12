@@ -1,0 +1,41 @@
+name: release
+
+# Пуш тега v* -> автосборка standalone-exe и публикация в Releases
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download ffmpeg (gyan.dev essentials, GPL)
+        run: |
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffx
+          Copy-Item (Get-ChildItem ffx -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName .\ffmpeg.exe
+
+      - name: Pack ffmpeg resource
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File src/make-ffmpeg-gz.ps1
+
+      - name: Build standalone
+        shell: cmd
+        run: cd src && build-standalone.cmd
+
+      - name: Package zip
+        run: Compress-Archive -Path StickerStudio-Standalone.exe, README.txt -DestinationPath StickerStudio-Standalone.zip
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$env:GITHUB_REF_NAME"
+          StickerStudio-Standalone.exe
+          StickerStudio-Standalone.zip
+          --title "Sticker Studio $env:GITHUB_REF_NAME"
+          --notes "Один файл, внутри уже есть ffmpeg — скачал и работаешь. Windows 10/11, установка не нужна. Если SmartScreen предупреждает: Подробнее -> Выполнить в любом случае."
