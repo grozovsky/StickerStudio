@@ -1,4 +1,4 @@
-# uxlive Sticker Studio
+﻿# uxlive Sticker Studio
 
 Нативный Windows-редактор видеостикеров для Telegram. Обрезка, точный выбор фрагмента, удаление однотонного фона и экспорт в готовый WebM — локально, без Adobe, облака и командной строки.
 
@@ -6,7 +6,7 @@
 
 ![Стартовый экран uxlive Sticker Studio](docs/uxlive-landing-v1.1.png)
 
-![Редактор uxlive Sticker Studio](docs/uxlive-editor-v1.1.png)
+![Редактор uxlive Sticker Studio](docs/uxlive-editor-v1.1b.png)
 
 ## Скачать
 
