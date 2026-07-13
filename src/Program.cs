@@ -98,7 +98,7 @@ namespace StickerStudio
 
     class MainForm : Form
     {
-        Panel dropScreen;
+        Panel dropScreen, landingViewport, landingCanvas;
         DropArea dropArea;
         Label loadLabel, appTitle, appCaption;
         Label telegramBadge;
@@ -108,6 +108,8 @@ namespace StickerStudio
         string pendingFile;
         VideoDoc currentDoc;
         volatile bool loading;
+        bool landingLayoutBusy;
+        bool? landingWasStacked;
 
         public MainForm(string startFile)
         {
@@ -146,8 +148,20 @@ namespace StickerStudio
             dropScreen = new Panel();
             dropScreen.Dock = DockStyle.Fill;
             dropScreen.BackColor = Theme.BackMain;
-            dropScreen.AutoScroll = true;
-            dropScreen.Paint += PaintLandingBackground;
+            dropScreen.Paint += PaintLandingHeader;
+
+            // Скролл принадлежит только контенту под шапкой. Если прокручивать
+            // весь экран, WinForms автоматически сдвигает его к focused-кнопке
+            // и сохраняет это смещение после resize.
+            landingViewport = new Panel();
+            landingViewport.AutoScroll = true;
+            landingViewport.TabStop = false;
+            landingViewport.BackColor = Theme.BackMain;
+
+            landingCanvas = new Panel();
+            landingCanvas.BackColor = Theme.BackMain;
+            landingCanvas.Paint += PaintLandingCanvas;
+            landingViewport.Controls.Add(landingCanvas);
 
             studioMark = new UxLiveMark();
             studioMark.Size = new Size(Theme.S(52), Theme.S(52));
@@ -191,13 +205,14 @@ namespace StickerStudio
             loadLabel.Text = "Файл остаётся на этом компьютере";
             loadLabel.Visible = false;
 
+            landingCanvas.Controls.Add(landingHero);
+            landingCanvas.Controls.Add(dropArea);
+            landingCanvas.Controls.Add(loadLabel);
+            dropScreen.Controls.Add(landingViewport);
             dropScreen.Controls.Add(studioMark);
             dropScreen.Controls.Add(appTitle);
             dropScreen.Controls.Add(appCaption);
             dropScreen.Controls.Add(telegramBadge);
-            dropScreen.Controls.Add(landingHero);
-            dropScreen.Controls.Add(dropArea);
-            dropScreen.Controls.Add(loadLabel);
             // зона дропа ограничена и отцентрована: не спорит с брендингом и краями окна
             dropScreen.Resize += delegate { LayoutDropArea(); };
 
@@ -246,24 +261,43 @@ namespace StickerStudio
 
         void LayoutDropArea()
         {
+            if (landingLayoutBusy || dropScreen == null || landingViewport == null) return;
+            landingLayoutBusy = true;
+            try
+            {
             int availW = dropScreen.ClientSize.Width;
             int availH = dropScreen.ClientSize.Height;
 
-            int edge = Theme.S(availW < Theme.S(1120) ? 28 : 48);
-            int contentW = Math.Min(Theme.S(1320), Math.Max(Theme.S(320), availW - edge * 2));
-            int contentX = Math.Max(edge, (availW - contentW) / 2);
+            int headerEdge = Theme.S(availW < Theme.S(1120) ? 28 : 48);
+            int headerContentW = Math.Min(Theme.S(1320), Math.Max(1, availW - headerEdge * 2));
+            int headerContentX = Math.Max(headerEdge, (availW - headerContentW) / 2);
             int headerY = Theme.S(20);
-            studioMark.Location = new Point(contentX, headerY);
+            studioMark.Location = new Point(headerContentX, headerY);
             appTitle.Location = new Point(studioMark.Right + Theme.S(13), headerY + Theme.S(2));
             appCaption.Location = new Point(studioMark.Right + Theme.S(14), headerY + Theme.S(30));
-            telegramBadge.Visible = contentW >= Theme.S(760);
-            if (telegramBadge.Visible)
-                telegramBadge.Location = new Point(contentX + contentW - telegramBadge.Width,
+            bool showTelegramBadge = headerContentW >= Theme.S(760);
+            telegramBadge.Visible = showTelegramBadge;
+            if (showTelegramBadge)
+                telegramBadge.Location = new Point(headerContentX + headerContentW - telegramBadge.Width,
                     headerY + Theme.S(11));
 
-            bool stacked = contentW < Theme.S(720);
-            int top = availH < Theme.S(720) ? Theme.S(118) :
+            int viewportTop = Theme.S(96);
+            int viewportH = Math.Max(1, availH - viewportTop);
+            landingViewport.SetBounds(0, viewportTop, availW, viewportH);
+
+            int provisionalEdge = Theme.S(availW < Theme.S(1120) ? 28 : 48);
+            int provisionalContentW = Math.Max(1, availW - provisionalEdge * 2);
+            bool stacked = provisionalContentW < Theme.S(720);
+            int scrollBarW = Math.Max(SystemInformation.VerticalScrollBarWidth, Theme.S(17));
+            int canvasW = Math.Max(1, availW -
+                (stacked ? scrollBarW : 0));
+            int edge = Theme.S(canvasW < Theme.S(1120) ? 28 : 48);
+            int contentW = Math.Min(Theme.S(1320), Math.Max(1, canvasW - edge * 2));
+            int contentX = Math.Max(edge, (canvasW - contentW) / 2);
+
+            int screenTop = availH < Theme.S(720) ? Theme.S(118) :
                 Math.Max(Theme.S(138), (availH - Theme.S(680)) / 2);
+            int top = Math.Max(Theme.S(22), screenTop - viewportTop);
 
             if (stacked)
             {
@@ -272,11 +306,17 @@ namespace StickerStudio
                 int dropY = landingHero.Bottom + Theme.S(24);
                 dropArea.SetBounds(contentX, dropY, contentW, Theme.S(360));
                 loadLabel.SetBounds(contentX, dropArea.Bottom + Theme.S(12), contentW, Theme.S(38));
-                dropScreen.AutoScrollMinSize = new Size(0, dropArea.Bottom + Theme.S(34));
+                int canvasH = dropArea.Bottom + Theme.S(34);
+                landingCanvas.SetBounds(0, 0, canvasW, canvasH);
+                landingViewport.AutoScrollMinSize = new Size(0, canvasH);
+                if (landingWasStacked != true)
+                    landingViewport.AutoScrollPosition = Point.Empty;
             }
             else
             {
-                dropScreen.AutoScrollMinSize = Size.Empty;
+                landingViewport.AutoScrollMinSize = Size.Empty;
+                landingViewport.AutoScrollPosition = Point.Empty;
+                landingCanvas.SetBounds(0, 0, canvasW, viewportH);
                 int gap = Theme.S(contentW < Theme.S(1100) ? 32 : 72);
                 int availableColumns = Math.Max(1, contentW - gap);
                 int rightMin = Theme.S(contentW < Theme.S(950) ? 420 : 470);
@@ -286,7 +326,7 @@ namespace StickerStudio
                 int leftW = Math.Max(Theme.S(300),
                     Math.Min(leftTarget, availableColumns - rightMin));
                 int rightW = availableColumns - leftW;
-                int availableH = Math.Max(Theme.S(340), availH - top - Theme.S(24));
+                int availableH = Math.Max(Theme.S(340), viewportH - top - Theme.S(24));
                 int heroH = Math.Min(Theme.S(448), availableH);
                 int dropH = Math.Min(Theme.S(500), availableH);
 
@@ -295,10 +335,25 @@ namespace StickerStudio
                 dropArea.SetBounds(rightX, top, rightW, dropH);
                 loadLabel.SetBounds(rightX, dropArea.Bottom + Theme.S(12), rightW, Theme.S(38));
             }
+            landingWasStacked = stacked;
             dropScreen.Invalidate();
+            landingCanvas.Invalidate();
+            }
+            finally { landingLayoutBusy = false; }
         }
 
-        void PaintLandingBackground(object sender, PaintEventArgs e)
+        void PaintLandingHeader(object sender, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Theme.BackMain);
+
+            using (Pen divider = new Pen(Color.FromArgb(26, Color.White), 1f))
+                g.DrawLine(divider, Theme.S(40), Theme.S(96) - 1,
+                    Math.Max(Theme.S(40), dropScreen.Width - Theme.S(40)), Theme.S(96) - 1);
+        }
+
+        void PaintLandingCanvas(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -324,10 +379,6 @@ namespace StickerStudio
                     }
                 }
             }
-
-            using (Pen divider = new Pen(Color.FromArgb(26, Color.White), 1f))
-                g.DrawLine(divider, Theme.S(40), Theme.S(96),
-                    Math.Max(Theme.S(40), dropScreen.Width - Theme.S(40)), Theme.S(96));
         }
 
         static void OpenChannel()
