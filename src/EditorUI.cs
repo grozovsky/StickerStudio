@@ -64,11 +64,16 @@ namespace StickerStudio
                 cancellationGeneration++;
                 process = currentProcess;
             }
-            try
+            // Kill НЕ на вызывающем (обычно UI) потоке: остановка ffmpeg
+            // блокирует на десятки мс и подвешивает перерисовку каретки при скрабе
+            if (process != null)
             {
-                if (process != null && !process.HasExited) process.Kill();
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    try { if (!process.HasExited) process.Kill(); }
+                    catch { }
+                });
             }
-            catch { }
         }
 
         void WorkerLoop()
@@ -507,11 +512,15 @@ namespace StickerStudio
                 cancellationGeneration++;
                 process = currentProcess;
             }
-            try
+            // Kill в фоне — не блокируем UI-поток при частых пересборках
+            if (process != null)
             {
-                if (process != null && !process.HasExited) process.Kill();
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    try { if (!process.HasExited) process.Kill(); }
+                    catch { }
+                });
             }
-            catch { }
         }
 
         void WorkerLoop()

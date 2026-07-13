@@ -1084,6 +1084,7 @@ namespace StickerStudio
             timeline.Position = t;
             playOffset = Math.Max(0, Math.Min(doc.CutDuration, t - doc.State.CutStart));
             timeline.Invalidate();
+            timeline.Update();   // каретка рисуется сразу, не ждёт очередь при скрабе
             preview.SetFrame(doc.FrameAt(t));
             UpdateTimeLabel();
             ScheduleExactPreview(120);
@@ -1441,12 +1442,9 @@ namespace StickerStudio
             }
             if (keyData == Keys.Space)
             {
-                if (btnBack.Focused || btnUndo.Focused || btnCrop.Focused || btnKey.Focused ||
-                    btnPlay.Focused || btnExport.Focused || btnPick.Focused ||
-                    btnCropApply.Focused || btnCropCancel.Focused ||
-                    btnKeyApply.Focused || btnKeyCancel.Focused ||
-                    slGain.Focused || slShrink.Focused)
-                    return false;
+                // В медиаредакторе пробел всегда = play/pause. Иначе он достаётся
+                // сфокусированной кнопке (после «Убрать фон»/«Применить фон» фокус
+                // остаётся на ней) и повторно её кликает, запуская обработку.
                 TogglePlay();
                 return true;
             }
