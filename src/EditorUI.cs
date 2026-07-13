@@ -128,12 +128,14 @@ namespace StickerStudio
                     ? geometry.PreKeyFilter + "," : "") + "format=rgba";
 
                 int code;
+                // -ss ПЕРЕД -i: ffmpeg прыгает к ключевому кадру и декодирует
+                // только хвост до нужного времени, а не весь файл с нуля
                 RunIsolated(request.FfmpegPath,
                     "-y -hide_banner -loglevel error " +
+                    "-ss " + Ffmpeg.Inv(request.Time) + " " +
                     (request.DecodeVp9Alpha ? "-c:v libvpx-vp9 " : "") +
                     "-i \"" + request.SourcePath +
-                    "\" -ss " + Ffmpeg.Inv(request.Time) +
-                    " -frames:v 1 -vf \"" + prepFilter + "\" \"" + nativePath + "\"",
+                    "\" -frames:v 1 -vf \"" + prepFilter + "\" \"" + nativePath + "\"",
                     generation, out code);
                 if (code != 0 || !File.Exists(nativePath)) return null;
 
@@ -579,61 +581,26 @@ namespace StickerStudio
                     request.Info, request.CropRect);
                 string rawPath = Path.Combine(tempDir, "frames.bgra");
                 string fps = Ffmpeg.Inv(request.Fps);
+                // -ss/-t ПЕРЕД -i: мгновенный прыжок к отрезку вместо
+                // декодирования исходника с самого начала при каждой пересборке
                 string cut = " -ss " + Ffmpeg.Inv(request.Start) +
                     " -t " + Ffmpeg.Inv(request.End - request.Start);
                 int code;
                 string log;
 
-                if (request.Key != null && request.Key.Enabled)
-                {
-                    string seqDir = Path.Combine(tempDir, "native");
-                    Directory.CreateDirectory(seqDir);
-                    string prep = "fps=" + fps + "," +
-                        (geometry.PreKeyFilter.Length > 0
-                            ? geometry.PreKeyFilter + "," : "") + "format=rgba";
-                    log = RunIsolated(request.FfmpegPath,
-                        "-y -hide_banner -loglevel error -i \"" + request.SourcePath +
-                        "\"" + cut + " -vf \"" + prep + "\" \"" +
-                        Path.Combine(seqDir, "f%05d.png") + "\"", generation, out code);
-                    if (code != 0)
-                    {
-                        error = "Подготовка кадров: " + Ffmpeg.LastLine(log);
-                        return null;
-                    }
-
-                    string[] frames = Directory.GetFiles(seqDir, "f*.png")
-                        .OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToArray();
-                    if (frames.Length == 0) return null;
-                    foreach (string frame in frames)
-                    {
-                        if (IsCancelled(generation)) return null;
-                        using (Bitmap bitmap = LoadArgb(frame))
-                        {
-                            ChromaKey.Apply(bitmap, request.Key);
-                            bitmap.Save(frame, System.Drawing.Imaging.ImageFormat.Png);
-                        }
-                    }
-
-                    log = RunIsolated(request.FfmpegPath,
-                        "-y -hide_banner -loglevel error -framerate " + fps +
-                        " -i \"" + Path.Combine(seqDir, "f%05d.png") +
-                        "\" -vf \"" + geometry.PostKeyFilter +
-                        ",format=bgra\" -an -sn -f rawvideo \"" + rawPath + "\"",
-                        generation, out code);
-                    DeleteCacheDirectory(seqDir);
-                }
-                else
-                {
-                    string filters = "fps=" + fps + "," +
-                        (geometry.PreKeyFilter.Length > 0
-                            ? geometry.PreKeyFilter + "," : "") +
-                        geometry.PostKeyFilter + ",format=bgra";
-                    log = RunIsolated(request.FfmpegPath,
-                        "-y -hide_banner -loglevel error -i \"" + request.SourcePath +
-                        "\"" + cut + " -vf \"" + filters +
-                        "\" -an -sn -f rawvideo \"" + rawPath + "\"",
-                        generation, out code);
-                }
+                // Один ffmpeg-проход сразу в raw BGRA на выходном размере.
+                // Кий (если включён) применяется дальше прямо по raw-кадрам —
+                // без PNG-секвенций и повторных запусков ffmpeg.
+                string filters = "fps=" + fps + "," +
+                    (geometry.PreKeyFilter.Length > 0
+                        ? geometry.PreKeyFilter + "," : "") +
+                    geometry.PostKeyFilter + ",format=bgra";
+                log = RunIsolated(request.FfmpegPath,
+                    "-y -hide_banner -loglevel error" + cut +
+                    " -i \"" + request.SourcePath +
+                    "\" -vf \"" + filters +
+                    "\" -an -sn -f rawvideo \"" + rawPath + "\"",
+                    generation, out code);
 
                 if (code != 0 || !File.Exists(rawPath))
                 {
@@ -642,8 +609,8 @@ namespace StickerStudio
                 }
 
                 if (request.Key != null && request.Key.Enabled &&
-                    !ProtectRawFrames(rawPath, geometry.OutputSize.Width,
-                        geometry.OutputSize.Height, generation))
+                    !KeyRawFrames(rawPath, geometry.OutputSize.Width,
+                        geometry.OutputSize.Height, request.Key, generation))
                     return null;
 
                 int frameBytes = checked(geometry.OutputSize.Width *
@@ -738,7 +705,10 @@ namespace StickerStudio
                 return stopped || generation != cancellationGeneration;
         }
 
-        bool ProtectRawFrames(string path, int width, int height, long generation)
+        // Кий + подготовка альфы одним проходом прямо по raw-кадрам кэша:
+        // без PNG-промежутков и лишних запусков ffmpeg
+        bool KeyRawFrames(string path, int width, int height, KeySettings key,
+            long generation)
         {
             int frameBytes = checked(width * height * 4);
             byte[] frame = new byte[frameBytes];
@@ -757,6 +727,7 @@ namespace StickerStudio
                         if (n <= 0) return false;
                         read += n;
                     }
+                    ChromaKey.ApplyToBgra(frame, width, height, width * 4, key);
                     ChromaKey.PrepareForVp9(frame, width, height,
                         width * 4, 3);
                     stream.Position = index * frameBytes;
