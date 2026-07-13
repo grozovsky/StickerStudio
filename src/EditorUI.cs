@@ -141,10 +141,24 @@ namespace StickerStudio
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            g.Clear(Theme.BackMain);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Theme.Stage);
+            using (Pen grid = new Pen(Color.FromArgb(13, Color.White), 1f))
+            {
+                int step = Theme.S(36);
+                for (int x = step; x < Width; x += step) g.DrawLine(grid, x, 0, x, Height);
+                for (int y = step; y < Height; y += step) g.DrawLine(grid, 0, y, Width, y);
+            }
             if (Doc == null || Doc.Frames.Count == 0) return;
 
             Rectangle r = ImageScreenRect();
+
+            Rectangle shadowRect = r;
+            shadowRect.Inflate(Theme.S(8), Theme.S(8));
+            shadowRect.Offset(0, Theme.S(5));
+            using (GraphicsPath shadow = StyledButton.Rounded(shadowRect, Theme.S(15)))
+            using (SolidBrush sb = new SolidBrush(Color.FromArgb(110, 0, 0, 0)))
+                g.FillPath(sb, shadow);
 
             // шахматка (видна сквозь прозрачные места)
             int cell = Theme.S(10);
@@ -171,6 +185,10 @@ namespace StickerStudio
             else
                 g.DrawImage(bmp, r);
 
+            using (GraphicsPath frame = StyledButton.Rounded(r, Theme.S(9)))
+            using (Pen fp = new Pen(Color.FromArgb(72, Color.White), 1f))
+                g.DrawPath(fp, frame);
+
             if (CropMode)
             {
                 RectangleF sel = ImageToScreen(CropSel);
@@ -183,6 +201,19 @@ namespace StickerStudio
                 }
                 using (Pen p = new Pen(Theme.Accent, 2f))
                     g.DrawRectangle(p, sel.X, sel.Y, sel.Width, sel.Height);
+
+                using (Pen guide = new Pen(Color.FromArgb(115, Color.White), 1f))
+                {
+                    guide.DashStyle = DashStyle.Dash;
+                    g.DrawLine(guide, sel.Left + sel.Width / 3f, sel.Top,
+                        sel.Left + sel.Width / 3f, sel.Bottom);
+                    g.DrawLine(guide, sel.Left + sel.Width * 2f / 3f, sel.Top,
+                        sel.Left + sel.Width * 2f / 3f, sel.Bottom);
+                    g.DrawLine(guide, sel.Left, sel.Top + sel.Height / 3f,
+                        sel.Right, sel.Top + sel.Height / 3f);
+                    g.DrawLine(guide, sel.Left, sel.Top + sel.Height * 2f / 3f,
+                        sel.Right, sel.Top + sel.Height * 2f / 3f);
+                }
 
                 int hs = Theme.S(11);
                 using (SolidBrush hb = new SolidBrush(Theme.Accent))
@@ -383,7 +414,7 @@ namespace StickerStudio
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Theme.BackPanel);
+            g.Clear(Theme.Surface);
             if (Doc == null || Doc.Info == null) return;
 
             Rectangle tr = TrackRect();
@@ -404,7 +435,7 @@ namespace StickerStudio
                     if (x2 < tr.Right) g.FillRectangle(dim, x2, tr.Y, tr.Right - x2, tr.Height);
                 }
                 g.Clip = old;
-                using (Pen tpen = new Pen(Theme.BorderIdle, 1f))
+                using (Pen tpen = new Pen(Color.FromArgb(100, Theme.BorderHover), 1f))
                     g.DrawPath(tpen, tp);
             }
 
@@ -433,9 +464,9 @@ namespace StickerStudio
 
             // плейхед: линия + треугольник сверху
             int px = TimeToX(Position);
-            using (Pen p = new Pen(Color.White, 2f))
+            using (Pen p = new Pen(Theme.Accent2, 2f))
                 g.DrawLine(p, px, tr.Y - Theme.S(2), px, tr.Bottom + Theme.S(2));
-            using (SolidBrush wb = new SolidBrush(Color.White))
+            using (SolidBrush wb = new SolidBrush(Theme.Accent2))
             {
                 Point[] tri = new Point[]
                 {

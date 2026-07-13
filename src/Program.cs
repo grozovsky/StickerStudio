@@ -99,7 +99,9 @@ namespace StickerStudio
     {
         Panel dropScreen;
         DropArea dropArea;
-        Label loadLabel;
+        Label loadLabel, landingTitle, landingSubtitle, appTitle, appCaption;
+        PillLabel telegramBadge;
+        StudioMark studioMark;
         EditorView editor;
         LinkLabel brand;
         PictureBox brandLogo;
@@ -119,8 +121,8 @@ namespace StickerStudio
             ForeColor = Theme.TextMain;
             Font = new Font("Segoe UI", 9.75f);
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(Theme.S(900), Theme.S(640));
-            MinimumSize = new Size(Theme.S(760), Theme.S(560));
+            ClientSize = new Size(Theme.S(1080), Theme.S(720));
+            MinimumSize = new Size(Theme.S(900), Theme.S(640));
             AllowDrop = true;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
             catch { }
@@ -129,17 +131,56 @@ namespace StickerStudio
             dropScreen = new Panel();
             dropScreen.Dock = DockStyle.Fill;
             dropScreen.BackColor = Theme.BackMain;
+            dropScreen.Paint += PaintLandingBackground;
+
+            studioMark = new StudioMark();
+            studioMark.Size = new Size(Theme.S(40), Theme.S(40));
+
+            appTitle = new Label();
+            appTitle.AutoSize = true;
+            appTitle.Text = "Sticker Studio";
+            appTitle.ForeColor = Theme.TextMain;
+            appTitle.Font = new Font("Segoe UI Semibold", 13.5f);
+
+            appCaption = new Label();
+            appCaption.AutoSize = true;
+            appCaption.Text = "VIDEO STICKER WORKSPACE";
+            appCaption.ForeColor = Theme.TextMuted;
+            appCaption.Font = new Font("Segoe UI Semibold", 7.5f);
+
+            telegramBadge = new PillLabel();
+            telegramBadge.Text = "TELEGRAM READY";
+            telegramBadge.Tone = Theme.Telegram;
+            telegramBadge.Dot = true;
+            telegramBadge.Size = new Size(Theme.S(156), Theme.S(28));
+
+            landingTitle = new Label();
+            landingTitle.Text = "Видео — в живой стикер";
+            landingTitle.TextAlign = ContentAlignment.MiddleCenter;
+            landingTitle.ForeColor = Theme.TextMain;
+            landingTitle.Font = new Font("Segoe UI Semibold", 25f);
+
+            landingSubtitle = new Label();
+            landingSubtitle.Text = "Кроп, хромакей и экспорт под лимиты Telegram — в одном потоке.";
+            landingSubtitle.TextAlign = ContentAlignment.MiddleCenter;
+            landingSubtitle.ForeColor = Theme.TextMuted;
+            landingSubtitle.Font = new Font("Segoe UI", 10.5f);
 
             dropArea = new DropArea();
             dropArea.Click += delegate { PickFile(); };
 
             loadLabel = new Label();
-            loadLabel.Dock = DockStyle.Bottom;
-            loadLabel.Height = Theme.S(40);
             loadLabel.TextAlign = ContentAlignment.MiddleCenter;
             loadLabel.ForeColor = Theme.TextMuted;
-            loadLabel.Text = "Поддерживаются .mov / .webm (с альфа-каналом) и обычные .mp4";
+            loadLabel.Font = new Font("Segoe UI", 9f);
+            loadLabel.Text = "MOV, WEBM или MP4  •  обработка остаётся на вашем компьютере";
 
+            dropScreen.Controls.Add(studioMark);
+            dropScreen.Controls.Add(appTitle);
+            dropScreen.Controls.Add(appCaption);
+            dropScreen.Controls.Add(telegramBadge);
+            dropScreen.Controls.Add(landingTitle);
+            dropScreen.Controls.Add(landingSubtitle);
             dropScreen.Controls.Add(dropArea);
             dropScreen.Controls.Add(loadLabel);
             // зона дропа ограничена и отцентрована: не спорит с брендингом и краями окна
@@ -152,16 +193,16 @@ namespace StickerStudio
 
             // --- брендинг ---
             brand = new LinkLabel();
-            brand.Text = "Сделано в UX Live";
+            brand.Text = "by UX Live";
             brand.AutoSize = true;
-            brand.LinkArea = new LinkArea(10, 7);
+            brand.LinkArea = new LinkArea(3, 7);
             brand.ForeColor = Theme.TextMuted;
             brand.LinkColor = Theme.Accent;
             brand.ActiveLinkColor = Color.White;
             brand.VisitedLinkColor = Theme.Accent;
             brand.LinkBehavior = LinkBehavior.HoverUnderline;
-            brand.BackColor = Theme.BackMain;
-            brand.Font = new Font("Segoe UI", 9f);
+            brand.BackColor = Color.Transparent;
+            brand.Font = new Font("Segoe UI Semibold", 8.75f);
             brand.LinkClicked += delegate { OpenChannel(); };
 
             Image logo = LoadLogo();
@@ -170,16 +211,16 @@ namespace StickerStudio
                 brandLogo = new PictureBox();
                 brandLogo.Image = logo;
                 brandLogo.SizeMode = PictureBoxSizeMode.Zoom;
-                brandLogo.Size = new Size(Theme.S(22), Theme.S(22));
-                brandLogo.BackColor = Theme.BackMain;
+                brandLogo.Size = new Size(Theme.S(20), Theme.S(20));
+                brandLogo.BackColor = Color.Transparent;
                 brandLogo.Cursor = Cursors.Hand;
                 brandLogo.Click += delegate { OpenChannel(); };
             }
 
             Controls.Add(editor);
             Controls.Add(dropScreen);
-            Controls.Add(brand);
-            if (brandLogo != null) Controls.Add(brandLogo);
+            dropScreen.Controls.Add(brand);
+            if (brandLogo != null) dropScreen.Controls.Add(brandLogo);
             brand.BringToFront();
             if (brandLogo != null) brandLogo.BringToFront();
 
@@ -221,23 +262,47 @@ namespace StickerStudio
         void LayoutDropArea()
         {
             int availW = dropScreen.ClientSize.Width;
-            int topPad = Theme.S(64);   // под брендингом
-            int availH = dropScreen.ClientSize.Height - topPad - loadLabel.Height - Theme.S(12);
-            int w = Math.Min(availW - Theme.S(112), Theme.S(720));
-            int h = Math.Min(availH, Theme.S(460));
-            if (w < Theme.S(200)) w = Math.Max(Theme.S(120), availW - Theme.S(24));
-            if (h < Theme.S(140)) h = Math.Max(Theme.S(100), availH);
-            dropArea.SetBounds((availW - w) / 2, topPad + (availH - h) / 2, w, h);
+            int availH = dropScreen.ClientSize.Height;
+
+            studioMark.Location = new Point(Theme.S(30), Theme.S(24));
+            appTitle.Location = new Point(Theme.S(84), Theme.S(22));
+            appCaption.Location = new Point(Theme.S(85), Theme.S(48));
+            telegramBadge.Location = new Point(availW - telegramBadge.Width - Theme.S(30), Theme.S(30));
+
+            int titleW = Math.Min(Theme.S(850), availW - Theme.S(56));
+            landingTitle.SetBounds((availW - titleW) / 2, Theme.S(88), titleW, Theme.S(52));
+            landingSubtitle.SetBounds((availW - titleW) / 2, Theme.S(144), titleW, Theme.S(30));
+
+            int w = Math.Min(availW - Theme.S(96), Theme.S(780));
+            int h = Math.Min(Theme.S(390), availH - Theme.S(310));
+            if (w < Theme.S(560)) w = Math.Max(Theme.S(320), availW - Theme.S(40));
+            if (h < Theme.S(280)) h = Theme.S(280);
+            int top = Theme.S(190);
+            if (top + h + Theme.S(84) > availH)
+                top = Math.Max(Theme.S(172), availH - h - Theme.S(84));
+            dropArea.SetBounds((availW - w) / 2, top, w, h);
+            loadLabel.SetBounds(Theme.S(24), dropArea.Bottom + Theme.S(10), availW - Theme.S(48), Theme.S(28));
+            PositionBrand();
+            dropScreen.Invalidate();
         }
 
         void PositionBrand()
         {
+            if (brand == null) return;
             brand.Location = new Point(
-                ClientSize.Width - brand.Width - Theme.S(10), Theme.S(6));
+                dropScreen.ClientSize.Width - brand.Width - Theme.S(30),
+                dropScreen.ClientSize.Height - brand.Height - Theme.S(22));
             if (brandLogo != null)
                 brandLogo.Location = new Point(
                     brand.Left - brandLogo.Width - Theme.S(6),
-                    Theme.S(6) + (brand.Height - brandLogo.Height) / 2);
+                    brand.Top + (brand.Height - brandLogo.Height) / 2);
+        }
+
+        void PaintLandingBackground(object sender, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Theme.BackMain);
         }
 
         static void OpenChannel()
@@ -356,11 +421,11 @@ namespace StickerStudio
             editor.Visible = false;
             dropScreen.Visible = true;
             loadLabel.ForeColor = Theme.TextMuted;
-            loadLabel.Text = "Поддерживаются .mov / .webm (с альфа-каналом) и обычные .mp4";
+            loadLabel.Text = "MOV, WEBM или MP4  •  обработка остаётся на вашем компьютере";
         }
     }
 
-    // зона дропа в стиле WebmStickerPatch
+    // Главный импорт-кард: один ясный вход в сценарий вместо пустого поля.
     class DropArea : Panel
     {
         bool active;
@@ -390,54 +455,82 @@ namespace StickerStudio
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Parent != null ? Parent.BackColor : Theme.BackMain);
 
             Rectangle r = ClientRectangle;
-            int pad = Theme.S(6);
+            int pad = Theme.S(4);
             r.Inflate(-pad, -pad);
 
             Color border = active ? Theme.Accent : (hover ? Theme.BorderHover : Theme.BorderIdle);
-            using (GraphicsPath path = Rounded(r, Theme.S(14)))
+            using (GraphicsPath shadow = Rounded(new Rectangle(r.X, r.Y + Theme.S(8), r.Width, r.Height), Theme.S(24)))
+            using (SolidBrush sb = new SolidBrush(Color.FromArgb(80, 0, 0, 0)))
+                g.FillPath(sb, shadow);
+
+            using (GraphicsPath path = Rounded(r, Theme.S(24)))
             {
-                if (active)
-                {
-                    using (SolidBrush fill = new SolidBrush(Color.FromArgb(26, Theme.Accent)))
-                        g.FillPath(fill, path);
-                }
-                else if (hover)
-                {
-                    using (SolidBrush fill = new SolidBrush(Color.FromArgb(10, 255, 255, 255)))
-                        g.FillPath(fill, path);
-                }
+                Color top = active ? Color.FromArgb(42, 37, 76) :
+                    (hover ? Color.FromArgb(29, 32, 45) : Theme.SurfaceRaised);
+                Color bottom = active ? Color.FromArgb(22, 24, 38) : Theme.Surface;
+                using (LinearGradientBrush fill = new LinearGradientBrush(r, top, bottom, 90f))
+                    g.FillPath(fill, path);
                 using (Pen pen = new Pen(border, 2f * Theme.UiScale))
-                {
-                    pen.DashStyle = DashStyle.Dash;
                     g.DrawPath(pen, path);
-                }
             }
 
-            string icon = ""; // MDL2: Download
-            string l1 = "Перетащите видео сюда";
-            string l2 = "…или кликните, чтобы выбрать файл";
-            using (Font fi = new Font("Segoe MDL2 Assets", 34f))
-            using (Font f1 = new Font("Segoe UI Semibold", 15f))
+            string icon = active ? "" : "";
+            string l1 = active ? "Отпускайте — импортирую" : "Перетащите видео сюда";
+            string l2 = "или выберите файл вручную";
+            int orb = Theme.S(64);
+            int orbY = r.Top + Theme.S(58);
+            Rectangle orbRect = new Rectangle(r.Left + (r.Width - orb) / 2, orbY, orb, orb);
+            using (GraphicsPath op = Rounded(orbRect, orb / 2))
+            using (LinearGradientBrush ob = new LinearGradientBrush(orbRect,
+                active ? Theme.AccentHover : Theme.Accent, Theme.Telegram, 45f))
+                g.FillPath(ob, op);
+
+            using (Font fi = new Font("Segoe MDL2 Assets", 22f))
+            using (Font f1 = new Font("Segoe UI Semibold", 18f))
             using (Font f2 = new Font("Segoe UI", 10f))
+            using (Font fb = new Font("Segoe UI Semibold", 9.5f))
+            using (Font fc = new Font("Segoe UI Semibold", 7.75f))
             {
                 SizeF si = g.MeasureString(icon, fi);
                 SizeF s1 = g.MeasureString(l1, f1);
                 SizeF s2 = g.MeasureString(l2, f2);
-                float totalH = si.Height + Theme.S(14) + s1.Height + Theme.S(6) + s2.Height;
-                float y = r.Top + (r.Height - totalH) / 2f;
-                using (SolidBrush bi = new SolidBrush(active ? Theme.Accent : Theme.BorderHover))
-                    g.DrawString(icon, fi, bi, r.Left + (r.Width - si.Width) / 2f, y);
-                y += si.Height + Theme.S(14);
-                using (SolidBrush b1 = new SolidBrush(active ? Theme.Accent : Theme.TextMain))
+                using (SolidBrush bi = new SolidBrush(Color.White))
+                    g.DrawString(icon, fi, bi, orbRect.Left + (orb - si.Width) / 2f,
+                        orbRect.Top + (orb - si.Height) / 2f + Theme.S(1));
+
+                float y = orbRect.Bottom + Theme.S(16);
+                using (SolidBrush b1 = new SolidBrush(Theme.TextMain))
                     g.DrawString(l1, f1, b1, r.Left + (r.Width - s1.Width) / 2f, y);
-                y += s1.Height + Theme.S(6);
+                y += s1.Height + Theme.S(3);
                 using (SolidBrush b2 = new SolidBrush(Theme.TextMuted))
                     g.DrawString(l2, f2, b2, r.Left + (r.Width - s2.Width) / 2f, y);
+
+                Rectangle cta = new Rectangle(r.Left + (r.Width - Theme.S(184)) / 2,
+                    (int)(y + s2.Height + Theme.S(14)), Theme.S(184), Theme.S(42));
+                using (GraphicsPath cp = Rounded(cta, cta.Height / 2))
+                using (SolidBrush cb = new SolidBrush(hover || active ? Theme.AccentHover : Theme.Accent))
+                    g.FillPath(cb, cp);
+                string ctaText = "Выбрать видео";
+                SizeF cs = g.MeasureString(ctaText, fb);
+                using (SolidBrush cw = new SolidBrush(Color.White))
+                    g.DrawString(ctaText, fb, cw, cta.Left + (cta.Width - cs.Width) / 2f,
+                        cta.Top + (cta.Height - cs.Height) / 2f);
+
+                string secure = "●  ОБРАБОТКА ЛОКАЛЬНО";
+                SizeF ss = g.MeasureString(secure, fc);
+                using (SolidBrush sg = new SolidBrush(Theme.Accent2))
+                    g.DrawString(secure, fc, sg, r.Left + (r.Width - ss.Width) / 2f, r.Top + Theme.S(24));
+
+                string formats = "MOV    •    WEBM    •    MP4";
+                SizeF fs = g.MeasureString(formats, fc);
+                using (SolidBrush fm = new SolidBrush(Theme.TextMuted))
+                    g.DrawString(formats, fc, fm, r.Left + (r.Width - fs.Width) / 2f,
+                        r.Bottom - Theme.S(30));
             }
         }
 

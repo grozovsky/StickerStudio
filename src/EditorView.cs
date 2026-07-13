@@ -19,8 +19,14 @@ namespace StickerStudio
         TimelineControl timeline;
         StyledButton btnBack, btnUndo, btnCrop, btnKey, btnPlay, btnExport;
         StyledButton btnKeyApply, btnKeyCancel, btnCropApply, btnCropCancel, btnPick;
-        Panel toolbar, bottomBar, footer, keyPanel, cropPanel;
+        Panel toolbar, content, toolRail, mainColumn, stageHost, bottomBar;
+        Panel inspector, inspectorDefault, keyPanel, cropPanel;
+        SurfacePanel readinessCard;
+        StudioMark studioMark;
+        PillLabel readinessBadge, cropBadge, keyBadge;
         Label timeLabel, statusLabel, lbGain, lbShrink, cropHint;
+        Label fileLabel, stageTitle, stageMeta, inspectorTitle, inspectorCaption;
+        Label readinessTitle, readinessDetail, sourceInfo, timelineTitle;
         NiceSlider slGain, slShrink;
         ToolTip tips;
 
@@ -44,98 +50,130 @@ namespace StickerStudio
 
         void BuildUi()
         {
-            // ---------- верхняя панель ----------
+            // ---------- top command bar ----------
             toolbar = new Panel();
             toolbar.Dock = DockStyle.Top;
-            toolbar.Height = Theme.S(62);
+            toolbar.Height = Theme.S(72);
             toolbar.BackColor = Theme.BackMain;
+            toolbar.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(Color.FromArgb(30, Color.White), 1f))
+                    e.Graphics.DrawLine(p, 0, toolbar.Height - 1, toolbar.Width, toolbar.Height - 1);
+            };
 
-            btnBack = MakeBtn("", "Другое видео", Theme.S(16), Theme.S(150));
-            btnUndo = MakeBtn("", "Шаг назад", Theme.S(192), Theme.S(126));
-            btnCrop = MakeBtn("", "Crop 1:1", Theme.S(330), Theme.S(120));
-            btnKey = MakeBtn("", "Удалить фон", Theme.S(462), Theme.S(150));
-            btnBack.Ghost = true; // навигация, не инструмент — не конкурирует за внимание
+            studioMark = new StudioMark();
+            studioMark.SetBounds(Theme.S(20), Theme.S(16), Theme.S(40), Theme.S(40));
+            toolbar.Controls.Add(studioMark);
+
+            Label app = new Label();
+            app.AutoSize = true;
+            app.Text = "Sticker Studio";
+            app.ForeColor = Theme.TextMain;
+            app.Font = new Font("Segoe UI Semibold", 12.5f);
+            app.Location = new Point(Theme.S(72), Theme.S(15));
+            toolbar.Controls.Add(app);
+
+            Label appMeta = new Label();
+            appMeta.AutoSize = true;
+            appMeta.Text = "CREATIVE WORKSPACE";
+            appMeta.ForeColor = Theme.TextMuted;
+            appMeta.Font = new Font("Segoe UI Semibold", 7.25f);
+            appMeta.Location = new Point(Theme.S(73), Theme.S(40));
+            toolbar.Controls.Add(appMeta);
+
+            fileLabel = new Label();
+            fileLabel.ForeColor = Theme.TextMuted;
+            fileLabel.TextAlign = ContentAlignment.MiddleLeft;
+            fileLabel.Font = new Font("Segoe UI", 9f);
+            toolbar.Controls.Add(fileLabel);
+
+            btnBack = MakeBtn("", "Новое видео", 0, Theme.S(132));
+            btnUndo = MakeBtn("", "Отменить", 0, Theme.S(112));
+            btnBack.Ghost = true;
+            btnUndo.Border = true;
             toolbar.Controls.Add(btnBack);
             toolbar.Controls.Add(btnUndo);
-            toolbar.Controls.Add(btnCrop);
-            toolbar.Controls.Add(btnKey);
 
             btnBack.Click += delegate { if (!busy && BackRequested != null) BackRequested(); };
             btnUndo.Click += delegate { DoUndo(); };
+            tips.SetToolTip(btnUndo, "Откатить последнее действие (Ctrl+Z)");
+
+            // ---------- workspace shell ----------
+            content = new Panel();
+            content.Dock = DockStyle.Fill;
+            content.BackColor = Theme.BackMain;
+
+            toolRail = new Panel();
+            toolRail.Dock = DockStyle.Left;
+            toolRail.Width = Theme.S(88);
+            toolRail.BackColor = Theme.BackPanel;
+            toolRail.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(Color.FromArgb(28, Color.White), 1f))
+                    e.Graphics.DrawLine(p, toolRail.Width - 1, 0, toolRail.Width - 1, toolRail.Height);
+            };
+
+            Label toolsLabel = new Label();
+            toolsLabel.Text = "TOOLS";
+            toolsLabel.TextAlign = ContentAlignment.MiddleCenter;
+            toolsLabel.ForeColor = Theme.TextMuted;
+            toolsLabel.Font = new Font("Segoe UI Semibold", 7.25f);
+            toolsLabel.SetBounds(0, Theme.S(15), toolRail.Width, Theme.S(20));
+            toolRail.Controls.Add(toolsLabel);
+
+            btnCrop = MakeToolBtn("", "Кроп", Theme.S(45));
+            btnKey = MakeToolBtn("", "Фон", Theme.S(119));
             btnCrop.Click += delegate { StartCrop(); };
             btnKey.Click += delegate { OpenKeyPanel(); };
-            tips.SetToolTip(btnUndo, "Откатить последнее действие (Ctrl+Z)");
+            toolRail.Controls.Add(btnCrop);
+            toolRail.Controls.Add(btnKey);
             tips.SetToolTip(btnCrop, "Выбрать квадратную зону стикера (512×512)");
             tips.SetToolTip(btnKey, "Убрать однотонный фон (хромакей)");
 
-            // ---------- панель хромакея ----------
-            keyPanel = new Panel();
-            keyPanel.Dock = DockStyle.Top;
-            keyPanel.Height = Theme.S(60);
-            keyPanel.BackColor = Theme.BackPanel;
-            keyPanel.Visible = false;
+            mainColumn = new Panel();
+            mainColumn.Dock = DockStyle.Fill;
+            mainColumn.BackColor = Theme.BackMain;
 
-            btnPick = MakeBtn(null, "Пипетка", Theme.S(10), Theme.S(140));
-            btnPick.SwatchColor = Color.FromArgb(0, 255, 0);
-            btnPick.Click += delegate { TogglePick(); };
-            tips.SetToolTip(btnPick, "Кликните по цвету фона на видео (Screen colour)");
+            stageHost = new Panel();
+            stageHost.Dock = DockStyle.Fill;
+            stageHost.BackColor = Theme.BackMain;
+            stageHost.Resize += delegate { LayoutStage(); };
 
-            lbGain = MakeLbl("Gain: 100", Theme.S(164), Theme.S(72));
-            slGain = new NiceSlider();
-            slGain.Minimum = 0; slGain.Maximum = 200; slGain.Value = 100;
-            slGain.SetBounds(Theme.S(236), Theme.S(12), Theme.S(140), Theme.S(32));
-            slGain.ValueChanged += delegate { OnKeyParamChanged(); };
-            tips.SetToolTip(slGain, "Сила вырезания фона");
+            stageTitle = new Label();
+            stageTitle.Text = "Предпросмотр";
+            stageTitle.ForeColor = Theme.TextMain;
+            stageTitle.Font = new Font("Segoe UI Semibold", 10.5f);
+            stageHost.Controls.Add(stageTitle);
 
-            lbShrink = MakeLbl("Shrink/Grow: 0", Theme.S(388), Theme.S(103));
-            slShrink = new NiceSlider();
-            slShrink.Minimum = -100; slShrink.Maximum = 100; slShrink.Value = 0;
-            slShrink.SetBounds(Theme.S(491), Theme.S(12), Theme.S(140), Theme.S(32));
-            slShrink.ValueChanged += delegate { OnKeyParamChanged(); };
-            tips.SetToolTip(slShrink, "Поджать (−) или расширить (+) края маски");
+            stageMeta = new Label();
+            stageMeta.ForeColor = Theme.TextMuted;
+            stageMeta.TextAlign = ContentAlignment.MiddleRight;
+            stageMeta.Font = new Font("Segoe UI", 8.5f);
+            stageHost.Controls.Add(stageMeta);
 
-            btnKeyApply = MakeBtn("", "Применить", 0, Theme.S(130));
-            btnKeyApply.Accent = true;
-            btnKeyCancel = MakeBtn("", "Отмена", 0, Theme.S(100));
-            btnKeyApply.Click += delegate { ApplyKey(); };
-            btnKeyCancel.Click += delegate { CancelKey(); };
+            preview = new PreviewControl();
+            preview.ColorPicked += OnColorPicked;
+            stageHost.Controls.Add(preview);
 
-            keyPanel.Controls.Add(btnPick);
-            keyPanel.Controls.Add(lbGain);
-            keyPanel.Controls.Add(slGain);
-            keyPanel.Controls.Add(lbShrink);
-            keyPanel.Controls.Add(slShrink);
-            keyPanel.Controls.Add(btnKeyApply);
-            keyPanel.Controls.Add(btnKeyCancel);
-            keyPanel.Resize += delegate { LayoutRightButtons(keyPanel, btnKeyApply, btnKeyCancel); };
-
-            // ---------- панель кропа ----------
-            cropPanel = new Panel();
-            cropPanel.Dock = DockStyle.Top;
-            cropPanel.Height = Theme.S(60);
-            cropPanel.BackColor = Theme.BackPanel;
-            cropPanel.Visible = false;
-
-            cropHint = MakeLbl("Выделите квадратную зону — стикер всегда будет 512×512", Theme.S(12), Theme.S(430));
-            btnCropApply = MakeBtn("", "Применить кроп", 0, Theme.S(160));
-            btnCropApply.Accent = true;
-            btnCropCancel = MakeBtn("", "Отмена", 0, Theme.S(100));
-            btnCropApply.Click += delegate { ApplyCrop(); };
-            btnCropCancel.Click += delegate { CancelCrop(); };
-            cropPanel.Controls.Add(cropHint);
-            cropPanel.Controls.Add(btnCropApply);
-            cropPanel.Controls.Add(btnCropCancel);
-            cropPanel.Resize += delegate { LayoutRightButtons(cropPanel, btnCropApply, btnCropCancel); };
-
-            // ---------- транспорт: play + таймлайн ----------
             bottomBar = new Panel();
             bottomBar.Dock = DockStyle.Bottom;
-            bottomBar.Height = Theme.S(86);
-            bottomBar.BackColor = Theme.BackPanel;
+            bottomBar.Height = Theme.S(132);
+            bottomBar.BackColor = Theme.Surface;
+            bottomBar.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(Color.FromArgb(36, Color.White), 1f))
+                    e.Graphics.DrawLine(p, 0, 0, bottomBar.Width, 0);
+            };
+
+            timelineTitle = new Label();
+            timelineTitle.Text = "ФРАГМЕНТ";
+            timelineTitle.ForeColor = Theme.TextMuted;
+            timelineTitle.Font = new Font("Segoe UI Semibold", 7.25f);
+            bottomBar.Controls.Add(timelineTitle);
 
             btnPlay = new StyledButton();
             btnPlay.Glyph = "";
-            btnPlay.GlyphSize = 13f;
+            btnPlay.GlyphSize = 14f;
             btnPlay.RoundFull = true;
             btnPlay.Accent = true;
             btnPlay.GlyphNudge = new Point(Theme.S(1), 0); // оптический центр стрелки
@@ -149,50 +187,69 @@ namespace StickerStudio
 
             timeLabel = new Label();
             timeLabel.ForeColor = Theme.TextMuted;
-            timeLabel.Font = new Font("Segoe UI", 8.75f);
-
-            statusLabel = new Label();
-            statusLabel.ForeColor = Theme.TextMuted;
-            statusLabel.TextAlign = ContentAlignment.MiddleLeft;
-
-            btnExport = new StyledButton();
-            btnExport.Glyph = "";
-            btnExport.Text = "Экспорт";
-            btnExport.Font = new Font("Segoe UI Semibold", 10f);
-            btnExport.Click += delegate { DoExport(); };
+            timeLabel.TextAlign = ContentAlignment.MiddleRight;
+            timeLabel.Font = new Font("Consolas", 8.75f);
 
             bottomBar.Controls.Add(btnPlay);
             bottomBar.Controls.Add(timeline);
             bottomBar.Controls.Add(timeLabel);
 
-            // ---------- подвал: статус + экспорт, отделён от рабочей зоны ----------
-            footer = new Panel();
-            footer.Dock = DockStyle.Bottom;
-            footer.Height = Theme.S(58);
-            footer.BackColor = Theme.BackFooter;
-            footer.Paint += delegate(object s, PaintEventArgs e)
+            // ---------- readiness / tool inspector ----------
+            inspector = new Panel();
+            inspector.Dock = DockStyle.Right;
+            inspector.Width = Theme.S(310);
+            inspector.BackColor = Theme.BackPanel;
+            inspector.Paint += delegate(object sender, PaintEventArgs e)
             {
-                using (Pen p = new Pen(Color.FromArgb(45, 255, 255, 255), 1f))
-                    e.Graphics.DrawLine(p, 0, 0, footer.Width, 0);
+                using (Pen p = new Pen(Color.FromArgb(30, Color.White), 1f))
+                    e.Graphics.DrawLine(p, 0, 0, 0, inspector.Height);
             };
-            footer.Controls.Add(statusLabel);
-            footer.Controls.Add(btnExport);
+
+            inspectorTitle = new Label();
+            inspectorTitle.Text = "Готовность";
+            inspectorTitle.ForeColor = Theme.TextMain;
+            inspectorTitle.Font = new Font("Segoe UI Semibold", 13f);
+            inspector.Controls.Add(inspectorTitle);
+
+            inspectorCaption = new Label();
+            inspectorCaption.Text = "Проверка перед экспортом";
+            inspectorCaption.ForeColor = Theme.TextMuted;
+            inspectorCaption.Font = new Font("Segoe UI", 8.5f);
+            inspector.Controls.Add(inspectorCaption);
+
+            BuildDefaultInspector();
+            BuildCropInspector();
+            BuildKeyInspector();
+
+            statusLabel = new Label();
+            statusLabel.ForeColor = Theme.TextMuted;
+            statusLabel.TextAlign = ContentAlignment.TopLeft;
+            statusLabel.Font = new Font("Segoe UI", 8.5f);
+            inspector.Controls.Add(statusLabel);
+
+            btnExport = new StyledButton();
+            btnExport.Glyph = "";
+            btnExport.Text = "Собрать WebM";
+            btnExport.Font = new Font("Segoe UI Semibold", 10f);
+            btnExport.Click += delegate { DoExport(); };
+            inspector.Controls.Add(btnExport);
 
             bottomBar.Resize += delegate { LayoutBottomBar(); };
-            footer.Resize += delegate { LayoutFooter(); };
-            LayoutBottomBar();
-            LayoutFooter();
+            inspector.Resize += delegate { LayoutInspector(); };
+            toolbar.Resize += delegate { LayoutToolbar(); };
 
-            preview = new PreviewControl();
-            preview.Dock = DockStyle.Fill;
-            preview.ColorPicked += OnColorPicked;
-
-            Controls.Add(preview);
-            Controls.Add(bottomBar);
-            Controls.Add(footer);
-            Controls.Add(cropPanel);
-            Controls.Add(keyPanel);
+            mainColumn.Controls.Add(stageHost);
+            mainColumn.Controls.Add(bottomBar);
+            content.Controls.Add(mainColumn);
+            content.Controls.Add(inspector);
+            content.Controls.Add(toolRail);
+            Controls.Add(content);
             Controls.Add(toolbar);
+
+            LayoutToolbar();
+            LayoutStage();
+            LayoutBottomBar();
+            LayoutInspector();
 
             playTimer = new System.Windows.Forms.Timer();
             playTimer.Interval = 15;
@@ -203,27 +260,254 @@ namespace StickerStudio
         {
             int W = bottomBar.ClientSize.Width;
             if (W < 50) W = Theme.S(900);
-            btnPlay.SetBounds(Theme.S(16), Theme.S(12), Theme.S(46), Theme.S(46));
-            timeline.SetBounds(Theme.S(78), Theme.S(8),
-                Math.Max(Theme.S(100), W - Theme.S(78) - Theme.S(16)), Theme.S(50));
-            timeLabel.SetBounds(Theme.S(78), Theme.S(62), Theme.S(460), Theme.S(16));
+            timelineTitle.SetBounds(Theme.S(24), Theme.S(14), Theme.S(100), Theme.S(22));
+            timeLabel.SetBounds(Theme.S(130), Theme.S(12),
+                Math.Max(Theme.S(180), W - Theme.S(154)), Theme.S(24));
+            btnPlay.SetBounds(Theme.S(22), Theme.S(53), Theme.S(50), Theme.S(50));
+            timeline.SetBounds(Theme.S(88), Theme.S(45),
+                Math.Max(Theme.S(100), W - Theme.S(112)), Theme.S(66));
         }
 
-        void LayoutFooter()
+        void LayoutToolbar()
         {
-            int W = footer.ClientSize.Width;
-            if (W < 50) W = Theme.S(900);
-            int exportW = Theme.S(140);
-            statusLabel.SetBounds(Theme.S(16), Theme.S(17),
-                Math.Max(Theme.S(100), W - exportW - Theme.S(44)), Theme.S(24));
-            btnExport.SetBounds(W - exportW - Theme.S(16), Theme.S(10), exportW, Theme.S(38));
+            int W = toolbar.ClientSize.Width;
+            btnBack.SetBounds(W - Theme.S(276), Theme.S(18), Theme.S(132), Theme.S(38));
+            btnUndo.SetBounds(W - Theme.S(132), Theme.S(18), Theme.S(112), Theme.S(38));
+            fileLabel.SetBounds(Theme.S(230), Theme.S(17),
+                Math.Max(Theme.S(120), W - Theme.S(530)), Theme.S(38));
         }
 
-        void LayoutRightButtons(Panel host, StyledButton apply, StyledButton cancel)
+        void LayoutStage()
         {
-            int W = host.ClientSize.Width;
-            cancel.SetBounds(W - cancel.Width - Theme.S(16), Theme.S(12), cancel.Width, Theme.S(36));
-            apply.SetBounds(cancel.Left - apply.Width - Theme.S(8), Theme.S(12), apply.Width, Theme.S(36));
+            int W = stageHost.ClientSize.Width;
+            int H = stageHost.ClientSize.Height;
+            stageTitle.SetBounds(Theme.S(24), Theme.S(18), Theme.S(180), Theme.S(24));
+            stageMeta.SetBounds(Math.Max(Theme.S(210), W - Theme.S(250)), Theme.S(18),
+                Theme.S(226), Theme.S(24));
+            preview.SetBounds(Theme.S(14), Theme.S(48),
+                Math.Max(Theme.S(80), W - Theme.S(28)), Math.Max(Theme.S(80), H - Theme.S(62)));
+        }
+
+        void LayoutInspector()
+        {
+            int W = inspector.ClientSize.Width;
+            int H = inspector.ClientSize.Height;
+            int pad = Theme.S(20);
+            inspectorTitle.SetBounds(pad, Theme.S(20), W - pad * 2, Theme.S(28));
+            inspectorCaption.SetBounds(pad, Theme.S(48), W - pad * 2, Theme.S(22));
+
+            int panelTop = Theme.S(82);
+            int exportH = Theme.S(50);
+            int exportY = H - exportH - Theme.S(20);
+            int statusY = exportY - Theme.S(56);
+            inspectorDefault.SetBounds(0, panelTop, W, Math.Max(Theme.S(180), statusY - panelTop));
+            cropPanel.SetBounds(0, panelTop, W, Math.Max(Theme.S(210), H - panelTop - Theme.S(20)));
+            keyPanel.SetBounds(0, panelTop, W, Math.Max(Theme.S(310), H - panelTop - Theme.S(20)));
+            statusLabel.SetBounds(pad, statusY, W - pad * 2, Theme.S(46));
+            btnExport.SetBounds(pad, exportY, W - pad * 2, exportH);
+
+            readinessCard.SetBounds(pad, Theme.S(4), W - pad * 2, Theme.S(116));
+            readinessBadge.SetBounds(Theme.S(16), Theme.S(14),
+                readinessCard.Width - Theme.S(32), Theme.S(26));
+            readinessTitle.SetBounds(Theme.S(16), Theme.S(48),
+                readinessCard.Width - Theme.S(32), Theme.S(25));
+            readinessDetail.SetBounds(Theme.S(16), Theme.S(74),
+                readinessCard.Width - Theme.S(32), Theme.S(32));
+            cropBadge.SetBounds(pad, Theme.S(138), W - pad * 2, Theme.S(30));
+            keyBadge.SetBounds(pad, Theme.S(176), W - pad * 2, Theme.S(30));
+            sourceInfo.SetBounds(pad, Theme.S(224), W - pad * 2, Theme.S(76));
+
+            LayoutCropPanel(W, cropPanel.Height);
+            LayoutKeyPanel(W, keyPanel.Height);
+        }
+
+        void BuildDefaultInspector()
+        {
+            inspectorDefault = new Panel();
+            inspectorDefault.BackColor = Theme.BackPanel;
+
+            readinessCard = new SurfacePanel();
+            readinessCard.FillColor = Theme.SurfaceRaised;
+            readinessCard.BackColor = Theme.SurfaceRaised;
+            readinessCard.StrokeColor = Theme.BorderIdle;
+            readinessCard.Radius = 16;
+
+            readinessBadge = new PillLabel();
+            readinessBadge.Text = "ПРОВЕРЯЮ";
+            readinessBadge.Tone = Theme.Accent;
+            readinessBadge.Dot = true;
+            readinessBadge.Strong = true;
+
+            readinessTitle = new Label();
+            readinessTitle.Text = "Подготовка проекта";
+            readinessTitle.ForeColor = Theme.TextMain;
+            readinessTitle.Font = new Font("Segoe UI Semibold", 10.25f);
+
+            readinessDetail = new Label();
+            readinessDetail.Text = "Проверяю параметры исходника";
+            readinessDetail.ForeColor = Theme.TextMuted;
+            readinessDetail.Font = new Font("Segoe UI", 8.25f);
+
+            readinessCard.Controls.Add(readinessBadge);
+            readinessCard.Controls.Add(readinessTitle);
+            readinessCard.Controls.Add(readinessDetail);
+
+            cropBadge = new PillLabel();
+            cropBadge.Text = "Кроп 1:1";
+            cropBadge.Dot = true;
+            cropBadge.Tone = Theme.TextMuted;
+
+            keyBadge = new PillLabel();
+            keyBadge.Text = "Фон";
+            keyBadge.Dot = true;
+            keyBadge.Tone = Theme.TextMuted;
+
+            sourceInfo = new Label();
+            sourceInfo.ForeColor = Theme.TextMuted;
+            sourceInfo.Font = new Font("Segoe UI", 8.5f);
+            sourceInfo.Text = "ИСХОДНИК\n—";
+
+            inspectorDefault.Controls.Add(readinessCard);
+            inspectorDefault.Controls.Add(cropBadge);
+            inspectorDefault.Controls.Add(keyBadge);
+            inspectorDefault.Controls.Add(sourceInfo);
+            inspector.Controls.Add(inspectorDefault);
+        }
+
+        void BuildCropInspector()
+        {
+            cropPanel = new Panel();
+            cropPanel.BackColor = Theme.BackPanel;
+            cropPanel.Visible = false;
+
+            Label eyebrow = MakeInspectorLabel("ИНСТРУМЕНТ", 7.25f, Theme.Accent, true);
+            eyebrow.SetBounds(Theme.S(20), Theme.S(8), Theme.S(250), Theme.S(20));
+            Label title = MakeInspectorLabel("Квадратный кроп", 14f, Theme.TextMain, true);
+            title.SetBounds(Theme.S(20), Theme.S(32), Theme.S(270), Theme.S(30));
+            cropHint = MakeInspectorLabel(
+                "Перемещайте рамку за центр и тяните за углы. Итог всегда будет 512 × 512.",
+                8.75f, Theme.TextMuted, false);
+            cropHint.SetBounds(Theme.S(20), Theme.S(70), Theme.S(270), Theme.S(58));
+
+            PillLabel ratio = new PillLabel();
+            ratio.Text = "1 : 1   •   512 PX";
+            ratio.Tone = Theme.Accent;
+            ratio.Dot = true;
+            ratio.SetBounds(Theme.S(20), Theme.S(142), Theme.S(170), Theme.S(30));
+
+            btnCropApply = new StyledButton();
+            btnCropApply.Glyph = "";
+            btnCropApply.Text = "Применить кроп";
+            btnCropApply.Accent = true;
+            btnCropApply.Font = new Font("Segoe UI Semibold", 9.5f);
+            btnCropCancel = new StyledButton();
+            btnCropCancel.Glyph = "";
+            btnCropCancel.Text = "Отмена";
+            btnCropCancel.Ghost = true;
+            btnCropCancel.Border = true;
+            btnCropApply.Click += delegate { ApplyCrop(); };
+            btnCropCancel.Click += delegate { CancelCrop(); };
+
+            cropPanel.Controls.Add(eyebrow);
+            cropPanel.Controls.Add(title);
+            cropPanel.Controls.Add(cropHint);
+            cropPanel.Controls.Add(ratio);
+            cropPanel.Controls.Add(btnCropApply);
+            cropPanel.Controls.Add(btnCropCancel);
+            inspector.Controls.Add(cropPanel);
+        }
+
+        void BuildKeyInspector()
+        {
+            keyPanel = new Panel();
+            keyPanel.BackColor = Theme.BackPanel;
+            keyPanel.Visible = false;
+
+            Label eyebrow = MakeInspectorLabel("ИНСТРУМЕНТ", 7.25f, Theme.Accent2, true);
+            eyebrow.SetBounds(Theme.S(20), Theme.S(8), Theme.S(250), Theme.S(20));
+            Label title = MakeInspectorLabel("Удаление фона", 14f, Theme.TextMain, true);
+            title.SetBounds(Theme.S(20), Theme.S(32), Theme.S(270), Theme.S(30));
+            Label hint = MakeInspectorLabel(
+                "Выберите цвет на видео, затем уточните края маски.",
+                8.75f, Theme.TextMuted, false);
+            hint.SetBounds(Theme.S(20), Theme.S(68), Theme.S(270), Theme.S(42));
+
+            btnPick = new StyledButton();
+            btnPick.Text = "Выбрать цвет на видео";
+            btnPick.Border = true;
+            btnPick.SwatchColor = Color.FromArgb(0, 255, 0);
+            btnPick.Click += delegate { TogglePick(); };
+            tips.SetToolTip(btnPick, "Кликните по цвету фона на видео");
+
+            lbGain = MakeInspectorLabel("Сила удаления  ·  100", 8.75f, Theme.TextSoft, true);
+            slGain = new NiceSlider();
+            slGain.Minimum = 0; slGain.Maximum = 200; slGain.Value = 100;
+            slGain.ValueChanged += delegate { OnKeyParamChanged(); };
+            tips.SetToolTip(slGain, "Сила вырезания фона");
+
+            lbShrink = MakeInspectorLabel("Край маски  ·  0", 8.75f, Theme.TextSoft, true);
+            slShrink = new NiceSlider();
+            slShrink.Minimum = -100; slShrink.Maximum = 100; slShrink.Value = 0;
+            slShrink.ValueChanged += delegate { OnKeyParamChanged(); };
+            tips.SetToolTip(slShrink, "Поджать (−) или расширить (+) края маски");
+
+            btnKeyApply = new StyledButton();
+            btnKeyApply.Glyph = "";
+            btnKeyApply.Text = "Применить фон";
+            btnKeyApply.Accent = true;
+            btnKeyApply.Font = new Font("Segoe UI Semibold", 9.5f);
+            btnKeyCancel = new StyledButton();
+            btnKeyCancel.Glyph = "";
+            btnKeyCancel.Text = "Отмена";
+            btnKeyCancel.Ghost = true;
+            btnKeyCancel.Border = true;
+            btnKeyApply.Click += delegate { ApplyKey(); };
+            btnKeyCancel.Click += delegate { CancelKey(); };
+
+            keyPanel.Controls.Add(eyebrow);
+            keyPanel.Controls.Add(title);
+            keyPanel.Controls.Add(hint);
+            keyPanel.Controls.Add(btnPick);
+            keyPanel.Controls.Add(lbGain);
+            keyPanel.Controls.Add(slGain);
+            keyPanel.Controls.Add(lbShrink);
+            keyPanel.Controls.Add(slShrink);
+            keyPanel.Controls.Add(btnKeyApply);
+            keyPanel.Controls.Add(btnKeyCancel);
+            inspector.Controls.Add(keyPanel);
+        }
+
+        Label MakeInspectorLabel(string text, float size, Color color, bool semibold)
+        {
+            Label l = new Label();
+            l.Text = text;
+            l.ForeColor = color;
+            l.Font = new Font(semibold ? "Segoe UI Semibold" : "Segoe UI", size);
+            return l;
+        }
+
+        void LayoutCropPanel(int W, int H)
+        {
+            int pad = Theme.S(20);
+            btnCropApply.SetBounds(pad, Math.Max(Theme.S(196), H - Theme.S(102)),
+                W - pad * 2, Theme.S(44));
+            btnCropCancel.SetBounds(pad, btnCropApply.Bottom + Theme.S(8),
+                W - pad * 2, Theme.S(38));
+        }
+
+        void LayoutKeyPanel(int W, int H)
+        {
+            int pad = Theme.S(20);
+            int innerW = W - pad * 2;
+            btnPick.SetBounds(pad, Theme.S(112), innerW, Theme.S(42));
+            lbGain.SetBounds(pad, Theme.S(166), innerW, Theme.S(24));
+            slGain.SetBounds(pad, Theme.S(190), innerW, Theme.S(32));
+            lbShrink.SetBounds(pad, Theme.S(226), innerW, Theme.S(24));
+            slShrink.SetBounds(pad, Theme.S(250), innerW, Theme.S(32));
+            btnKeyApply.SetBounds(pad, Math.Max(Theme.S(292), H - Theme.S(102)),
+                innerW, Theme.S(44));
+            btnKeyCancel.SetBounds(pad, btnKeyApply.Bottom + Theme.S(8),
+                innerW, Theme.S(38));
         }
 
         StyledButton MakeBtn(string glyph, string text, int x, int w)
@@ -232,6 +516,19 @@ namespace StickerStudio
             b.Glyph = glyph;
             b.Text = text;
             b.SetBounds(x, Theme.S(13), w, Theme.S(36));
+            return b;
+        }
+
+        StyledButton MakeToolBtn(string glyph, string text, int y)
+        {
+            StyledButton b = new StyledButton();
+            b.Glyph = glyph;
+            b.GlyphSize = 15f;
+            b.Text = text;
+            b.Vertical = true;
+            b.Ghost = true;
+            b.Font = new Font("Segoe UI Semibold", 8.25f);
+            b.SetBounds(Theme.S(10), y, Theme.S(68), Theme.S(66));
             return b;
         }
 
@@ -261,8 +558,7 @@ namespace StickerStudio
             timeline.ResetStrip();
 
             btnKey.Visible = !d.SourceHasAlpha;
-            keyPanel.Visible = false;
-            cropPanel.Visible = false;
+            ShowDefaultInspector();
             playing = false;
             playOffset = 0;
             playClock.Reset();
@@ -274,6 +570,12 @@ namespace StickerStudio
             statusInfo = d.Info.Width + "×" + d.Info.Height +
                 "  •  " + d.Info.Duration.ToString("0.0") + " с  •  " +
                 (d.SourceHasAlpha ? "с альфа-каналом" : "без альфа-канала");
+            fileLabel.Text = Path.GetFileName(d.SourcePath) + "   •   " + statusInfo;
+            stageMeta.Text = "CANVAS  ·  " + (d.CropApplied ? "512 × 512" : d.Info.Width + " × " + d.Info.Height);
+            sourceInfo.Text = "ИСХОДНИК\n" + Path.GetFileName(d.SourcePath) + "\n" +
+                d.Info.Width + " × " + d.Info.Height + "   ·   " +
+                d.Info.Duration.ToString("0.0") + " с   ·   " +
+                (d.Info.Fps > 0 ? d.Info.Fps.ToString("0.##") + " fps" : "fps —");
 
             preview.SetFrame(d.FrameAt(d.State.CutStart));
             UpdateButtons();
@@ -311,6 +613,7 @@ namespace StickerStudio
             btnExport.Enabled = !busy;
             // замок объясняет блокировку с первого взгляда (E72E Lock / E74E Save)
             btnExport.Glyph = blocked ? "" : "";
+            btnExport.Text = busy ? "Экспортирую…" : (blocked ? "Сначала выбрать кроп" : "Собрать WebM");
             btnExport.Invalidate();
             tips.SetToolTip(btnExport, blocked
                 ? "Видео больше 512px — сначала нажмите «Crop 1:1» и выберите зону стикера"
@@ -319,11 +622,42 @@ namespace StickerStudio
             btnCrop.SetChecked(doc != null && doc.CropApplied);
             btnKey.SetChecked(doc != null && doc.State.Key.Enabled);
 
+            readinessBadge.Text = blocked ? "НУЖЕН КРОП" : "ГОТОВО К ЭКСПОРТУ";
+            readinessBadge.Tone = blocked ? Theme.Warn : Theme.Ok;
+            readinessBadge.Invalidate();
+            readinessTitle.Text = blocked ? "Остался один шаг" : "Все проверки пройдены";
+            readinessDetail.Text = blocked
+                ? "Выберите квадратную область для стикера."
+                : "WebM будет собран под лимит 256 КБ.";
+
+            cropBadge.Text = doc != null && doc.CropApplied
+                ? "Кроп 1:1  ·  выбран"
+                : (blocked ? "Кроп 1:1  ·  обязателен" : "Кроп 1:1  ·  не требуется");
+            cropBadge.Tone = doc != null && doc.CropApplied ? Theme.Ok : (blocked ? Theme.Warn : Theme.TextMuted);
+            cropBadge.Invalidate();
+
+            if (doc != null && doc.SourceHasAlpha)
+            {
+                keyBadge.Text = "Альфа-канал  ·  сохранится";
+                keyBadge.Tone = Theme.Ok;
+            }
+            else
+            {
+                keyBadge.Text = doc != null && doc.State.Key.Enabled
+                    ? "Фон  ·  удаляется"
+                    : "Фон  ·  без обработки";
+                keyBadge.Tone = doc != null && doc.State.Key.Enabled ? Theme.Accent2 : Theme.TextMuted;
+            }
+            keyBadge.Invalidate();
+            stageMeta.Text = "CANVAS  ·  " + (doc != null && doc.CropApplied
+                ? "512 × 512" : (doc != null ? doc.Info.Width + " × " + doc.Info.Height : "—"));
+
             if (!busy && !showingResult)
             {
                 statusLabel.ForeColor = blocked ? Theme.Warn : Theme.TextMuted;
-                statusLabel.Text = statusInfo +
-                    (blocked ? "  •  Crop обязателен: видео больше 512px" : "");
+                statusLabel.Text = blocked
+                    ? "Кроп обязателен: исходник больше 512 px."
+                    : "Готово к экспорту. Результат появится рядом с исходником.";
             }
         }
 
@@ -336,7 +670,7 @@ namespace StickerStudio
         {
             if (doc == null) return;
             timeLabel.Text = string.Format(CultureInfo.InvariantCulture,
-                "{0:0.0} с  •  CUT: {1:0.0}–{2:0.0} с (длина {3:0.0} с, макс 6)",
+                "{0:0.0} с   /   {1:0.0}–{2:0.0}   ·   {3:0.0} с",
                 timeline.Position, doc.State.CutStart, doc.State.CutEnd, doc.CutDuration);
         }
 
@@ -414,7 +748,7 @@ namespace StickerStudio
             preview.CropSel = init;
             preview.CropMode = true;
             preview.AppliedCropPreview = Rectangle.Empty;
-            cropPanel.Visible = true;
+            ShowCropInspector();
             preview.Invalidate();
         }
 
@@ -435,7 +769,7 @@ namespace StickerStudio
         {
             preview.CropMode = false;
             preview.AppliedCropPreview = CropToPreview(doc.State.CropRect);
-            cropPanel.Visible = false;
+            ShowDefaultInspector();
             preview.Invalidate();
             UpdateButtons();
         }
@@ -454,7 +788,7 @@ namespace StickerStudio
             btnPick.SwatchColor = editingKey.ScreenColor;
             btnPick.Invalidate();
 
-            keyPanel.Visible = true;
+            ShowKeyInspector();
             preview.ActiveKey = editingKey;
             preview.BumpKeyVersion();
         }
@@ -487,8 +821,8 @@ namespace StickerStudio
 
         void UpdateKeyLabels()
         {
-            lbGain.Text = "Gain: " + slGain.Value;
-            lbShrink.Text = "Shrink/Grow: " + slShrink.Value;
+            lbGain.Text = "Сила удаления  ·  " + slGain.Value;
+            lbShrink.Text = "Край маски  ·  " + (slShrink.Value > 0 ? "+" : "") + slShrink.Value;
         }
 
         void ApplyKey()
@@ -506,7 +840,7 @@ namespace StickerStudio
 
         void CloseKeyPanel(bool applied)
         {
-            keyPanel.Visible = false;
+            ShowDefaultInspector();
             preview.PickMode = false;
             btnPick.SetChecked(false);
             editingKey = null;
@@ -516,6 +850,41 @@ namespace StickerStudio
                 preview.BumpKeyVersion();
             }
             UpdateButtons();
+        }
+
+        void ShowDefaultInspector()
+        {
+            inspectorDefault.Visible = true;
+            cropPanel.Visible = false;
+            keyPanel.Visible = false;
+            statusLabel.Visible = true;
+            btnExport.Visible = true;
+            inspectorTitle.Text = "Готовность";
+            inspectorCaption.Text = "Проверка перед экспортом";
+        }
+
+        void ShowCropInspector()
+        {
+            inspectorDefault.Visible = false;
+            cropPanel.Visible = true;
+            keyPanel.Visible = false;
+            statusLabel.Visible = false;
+            btnExport.Visible = false;
+            inspectorTitle.Text = "Кроп 1:1";
+            inspectorCaption.Text = "Композиция будущего стикера";
+            btnCrop.SetChecked(true);
+        }
+
+        void ShowKeyInspector()
+        {
+            inspectorDefault.Visible = false;
+            cropPanel.Visible = false;
+            keyPanel.Visible = true;
+            statusLabel.Visible = false;
+            btnExport.Visible = false;
+            inspectorTitle.Text = "Удаление фона";
+            inspectorCaption.Text = "Живой предпросмотр маски";
+            btnKey.SetChecked(true);
         }
 
         // ---------------- undo ----------------
@@ -569,7 +938,7 @@ namespace StickerStudio
             showingResult = false;
             UpdateButtons();
             statusLabel.ForeColor = Theme.TextMuted;
-            statusLabel.Text = "Экспорт…";
+            statusLabel.Text = "Собираю WebM и подгоняю размер…";
             ProbeInfo info = doc.Info;
             bool srcAlpha = doc.SourceHasAlpha;
             string src = doc.SourcePath;

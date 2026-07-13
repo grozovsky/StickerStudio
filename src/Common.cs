@@ -15,25 +15,37 @@ namespace StickerStudio
     {
         public static float UiScale = 1f;
 
-        public static readonly Color BackMain = Color.FromArgb(30, 30, 36);
-        public static readonly Color BackPanel = Color.FromArgb(37, 37, 45);
-        public static readonly Color BackHeader = Color.FromArgb(44, 44, 53);
-        public static readonly Color Accent = Color.FromArgb(42, 171, 238);
-        public static readonly Color TextMain = Color.FromArgb(235, 235, 240);
-        public static readonly Color TextMuted = Color.FromArgb(162, 162, 174);
-        public static readonly Color BorderIdle = Color.FromArgb(84, 86, 100);
-        public static readonly Color BorderHover = Color.FromArgb(120, 130, 150);
-        public static readonly Color Ok = Color.FromArgb(94, 214, 138);
-        public static readonly Color Warn = Color.FromArgb(255, 196, 90);
-        public static readonly Color Err = Color.FromArgb(255, 108, 108);
-        public static readonly Color Checker1 = Color.FromArgb(52, 52, 60);
-        public static readonly Color Checker2 = Color.FromArgb(64, 64, 74);
-        public static readonly Color BackFooter = Color.FromArgb(24, 24, 30);
-        public static readonly Color BtnBase = Color.FromArgb(46, 46, 56);
-        public static readonly Color BtnHover = Color.FromArgb(58, 58, 70);
-        public static readonly Color BtnPressed = Color.FromArgb(38, 38, 46);
-        public static readonly Color AccentHover = Color.FromArgb(66, 183, 245);
-        public static readonly Color AccentPressed = Color.FromArgb(28, 148, 214);
+        // Sticker Studio 2026 — calm near-black canvas with a vivid violet focus
+        // colour.  The second accent is reserved for success/readiness signals.
+        public static readonly Color BackMain = Color.FromArgb(10, 11, 16);
+        public static readonly Color BackPanel = Color.FromArgb(16, 18, 26);
+        public static readonly Color BackHeader = Color.FromArgb(23, 26, 37);
+        public static readonly Color BackFooter = Color.FromArgb(12, 14, 20);
+        public static readonly Color Stage = Color.FromArgb(13, 15, 22);
+        public static readonly Color Surface = Color.FromArgb(20, 22, 31);
+        public static readonly Color SurfaceRaised = Color.FromArgb(27, 30, 42);
+        public static readonly Color SurfaceSoft = Color.FromArgb(31, 34, 47);
+
+        public static readonly Color Accent = Color.FromArgb(124, 108, 255);
+        public static readonly Color AccentHover = Color.FromArgb(148, 134, 255);
+        public static readonly Color AccentPressed = Color.FromArgb(101, 84, 231);
+        public static readonly Color AccentSoft = Color.FromArgb(44, 39, 83);
+        public static readonly Color Accent2 = Color.FromArgb(59, 215, 194);
+        public static readonly Color Telegram = Color.FromArgb(51, 169, 242);
+
+        public static readonly Color TextMain = Color.FromArgb(246, 247, 251);
+        public static readonly Color TextSoft = Color.FromArgb(207, 211, 223);
+        public static readonly Color TextMuted = Color.FromArgb(145, 151, 170);
+        public static readonly Color BorderIdle = Color.FromArgb(46, 50, 68);
+        public static readonly Color BorderHover = Color.FromArgb(77, 82, 108);
+        public static readonly Color Ok = Color.FromArgb(99, 216, 158);
+        public static readonly Color Warn = Color.FromArgb(247, 197, 95);
+        public static readonly Color Err = Color.FromArgb(255, 103, 128);
+        public static readonly Color Checker1 = Color.FromArgb(35, 38, 50);
+        public static readonly Color Checker2 = Color.FromArgb(46, 50, 64);
+        public static readonly Color BtnBase = Color.FromArgb(31, 34, 47);
+        public static readonly Color BtnHover = Color.FromArgb(41, 45, 61);
+        public static readonly Color BtnPressed = Color.FromArgb(25, 27, 38);
 
         public static int S(int v)
         {
