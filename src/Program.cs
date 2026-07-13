@@ -170,21 +170,21 @@ namespace StickerStudio
             studioMark.AccessibleName = "Открыть UX Live в Telegram";
             studioMark.Click += delegate { OpenChannel(); };
 
-            appTitle = new Label();
+            appTitle = new SmoothLabel();
             appTitle.AutoSize = true;
             appTitle.Text = "Sticker Studio";
             appTitle.ForeColor = Theme.TextMain;
             appTitle.Font = new Font(Theme.DisplayFont, 14f);
             appTitle.BackColor = Color.Transparent;
 
-            appCaption = new Label();
+            appCaption = new SmoothLabel();
             appCaption.AutoSize = true;
             appCaption.Text = "uxlive  /  видеостикеры Telegram";
             appCaption.ForeColor = Theme.TextMuted;
             appCaption.Font = new Font(Theme.BodyFont, 9f);
             appCaption.BackColor = Color.Transparent;
 
-            telegramBadge = new Label();
+            telegramBadge = new SmoothLabel();
             telegramBadge.Text = "Telegram WebM   /   обработка локально";
             telegramBadge.TextAlign = ContentAlignment.MiddleRight;
             telegramBadge.ForeColor = Theme.TextSoft;
@@ -197,7 +197,7 @@ namespace StickerStudio
             dropArea = new DropArea();
             dropArea.Click += delegate { PickFile(); };
 
-            loadLabel = new Label();
+            loadLabel = new SmoothLabel();
             loadLabel.TextAlign = ContentAlignment.MiddleCenter;
             loadLabel.ForeColor = Theme.TextMuted;
             loadLabel.Font = new Font(Theme.BodyFont, 9.25f);
@@ -527,7 +527,7 @@ namespace StickerStudio
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+            Theme.PrepareText(g);
             string[] values = { "512 × 512", "До 6 секунд", "До 256 КБ" };
             string[] captions = { "квадратный холст", "точный фрагмент", "лимит Telegram" };
             using (Font headingFont = CreateHeadingFont(g))
@@ -537,8 +537,18 @@ namespace StickerStudio
             using (SolidBrush headingBrush = new SolidBrush(Theme.TextMain))
             using (SolidBrush summaryBrush = new SolidBrush(Theme.TextMuted))
             using (StringFormat headingFormat = new StringFormat(StringFormat.GenericTypographic))
+            using (StringFormat valueFormat = new StringFormat())
+            using (StringFormat captionFormat = new StringFormat())
             {
                 headingFormat.FormatFlags = StringFormatFlags.NoWrap;
+                valueFormat.Alignment = StringAlignment.Near;
+                valueFormat.LineAlignment = StringAlignment.Center;
+                valueFormat.Trimming = StringTrimming.EllipsisCharacter;
+                valueFormat.FormatFlags = StringFormatFlags.NoWrap;
+                captionFormat.Alignment = StringAlignment.Near;
+                captionFormat.LineAlignment = StringAlignment.Center;
+                captionFormat.Trimming = StringTrimming.EllipsisCharacter;
+                captionFormat.FormatFlags = StringFormatFlags.NoWrap;
                 float lineH = headingFont.GetHeight(g) * 1.08f;
                 g.DrawString(HeadingLine1, headingFont, headingBrush, 0, 0, headingFormat);
                 g.DrawString(HeadingLine2, headingFont, headingBrush, 0, lineH, headingFormat);
@@ -564,14 +574,14 @@ namespace StickerStudio
                     Rectangle icon = new Rectangle(0, y + (rowH - iconSide) / 2, iconSide, iconSide);
                     IconPainter.Draw(g, StudioIcon.Check,
                         new RectangleF(icon.X, icon.Y, icon.Width, icon.Height), Theme.Accent2);
-                    TextRenderer.DrawText(g, values[i], valueFont,
-                        new Rectangle(valueX, y, Math.Max(1, captionX - valueX - Theme.S(8)), rowH),
-                        Theme.TextMain, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                        TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-                    TextRenderer.DrawText(g, captions[i], captionFont,
-                        new Rectangle(captionX, y, Math.Max(1, Width - captionX), rowH),
-                        Theme.TextMuted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                        TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                    using (SolidBrush valueBrush = new SolidBrush(Theme.TextMain))
+                        g.DrawString(values[i], valueFont, valueBrush,
+                            new RectangleF(valueX, y,
+                                Math.Max(1, captionX - valueX - Theme.S(8)), rowH), valueFormat);
+                    using (SolidBrush captionBrush = new SolidBrush(Theme.TextMuted))
+                        g.DrawString(captions[i], captionFont, captionBrush,
+                            new RectangleF(captionX, y, Math.Max(1, Width - captionX), rowH),
+                            captionFormat);
                 }
             }
         }
@@ -645,6 +655,7 @@ namespace StickerStudio
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            Theme.PrepareText(g);
             g.Clear(Parent != null ? Parent.BackColor : Theme.BackMain);
 
             Rectangle r = ClientRectangle;
@@ -702,19 +713,24 @@ namespace StickerStudio
                     pressed ? Theme.AccentPressed : (hover || active ? Theme.AccentHover : Theme.Accent)))
                     g.FillPath(cb, cp);
                 string ctaText = "Выбрать видео";
-                Size cs = TextRenderer.MeasureText(g, ctaText, fb, Size.Empty,
-                    TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+                SizeF cs = g.MeasureString(ctaText, fb, PointF.Empty,
+                    StringFormat.GenericTypographic);
                 int ctaIcon = Theme.S(18);
                 float groupW = ctaIcon + Theme.S(8) + cs.Width;
                 float groupX = cta.Left + (cta.Width - groupW) / 2f;
                 IconPainter.Draw(g, StudioIcon.VideoUpload,
                     new RectangleF(groupX, cta.Top + (cta.Height - ctaIcon) / 2f, ctaIcon, ctaIcon),
                     Color.White);
-                TextRenderer.DrawText(g, ctaText, fb,
-                    new Rectangle((int)(groupX + ctaIcon + Theme.S(8)), cta.Top,
-                        cs.Width + Theme.S(2), cta.Height), Color.White,
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+                using (StringFormat ctaFormat = new StringFormat())
+                using (SolidBrush ctaBrush = new SolidBrush(Color.White))
+                {
+                    ctaFormat.Alignment = StringAlignment.Near;
+                    ctaFormat.LineAlignment = StringAlignment.Center;
+                    ctaFormat.FormatFlags = StringFormatFlags.NoWrap;
+                    g.DrawString(ctaText, fb, ctaBrush,
+                        new RectangleF(groupX + ctaIcon + Theme.S(8), cta.Top,
+                            cs.Width + Theme.S(2), cta.Height), ctaFormat);
+                }
 
                 string formats = "MOV    /    WEBM    /    MP4";
                 SizeF fs = g.MeasureString(formats, fc);

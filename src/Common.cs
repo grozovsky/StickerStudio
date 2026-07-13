@@ -62,6 +62,16 @@ namespace StickerStudio
             return (int)Math.Round(v * UiScale);
         }
 
+        // ClearType выглядит слишком жёстко на тёмных поверхностях и даёт
+        // цветную пиксельную кайму в скриншотах. Один grayscale anti-aliasing
+        // режим держит весь custom-painted текст визуально одинаковым.
+        public static void PrepareText(Graphics graphics)
+        {
+            if (graphics == null) return;
+            graphics.TextRenderingHint =
+                System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+        }
+
         static string ResolveFont(string preferred, string fallback)
         {
             try

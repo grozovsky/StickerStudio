@@ -66,7 +66,7 @@ namespace StickerStudio
             studioMark.SetBounds(Theme.S(18), Theme.S(17), Theme.S(42), Theme.S(42));
             toolbar.Controls.Add(studioMark);
 
-            appLabel = new Label();
+            appLabel = new SmoothLabel();
             appLabel.AutoSize = true;
             appLabel.Text = "uxlive";
             appLabel.ForeColor = Theme.TextMain;
@@ -74,7 +74,7 @@ namespace StickerStudio
             appLabel.Location = new Point(Theme.S(71), Theme.S(15));
             toolbar.Controls.Add(appLabel);
 
-            appMetaLabel = new Label();
+            appMetaLabel = new SmoothLabel();
             appMetaLabel.AutoSize = true;
             appMetaLabel.Text = "Sticker Studio  /  Telegram";
             appMetaLabel.ForeColor = Theme.TextMuted;
@@ -89,14 +89,14 @@ namespace StickerStudio
             sourceChip.Radius = 10;
             toolbar.Controls.Add(sourceChip);
 
-            fileLabel = new Label();
+            fileLabel = new SmoothLabel();
             fileLabel.ForeColor = Theme.TextMain;
             fileLabel.TextAlign = ContentAlignment.MiddleLeft;
             fileLabel.Font = new Font(Theme.BodySemiboldFont, 9f);
             fileLabel.AutoEllipsis = true;
             sourceChip.Controls.Add(fileLabel);
 
-            fileMetaLabel = new Label();
+            fileMetaLabel = new SmoothLabel();
             fileMetaLabel.ForeColor = Theme.TextMuted;
             fileMetaLabel.TextAlign = ContentAlignment.MiddleLeft;
             fileMetaLabel.Font = new Font(Theme.BodyFont, 8.25f);
@@ -149,13 +149,13 @@ namespace StickerStudio
             stageHost.BackColor = Theme.BackMain;
             stageHost.Resize += delegate { LayoutStage(); };
 
-            stageTitle = new Label();
+            stageTitle = new SmoothLabel();
             stageTitle.Text = "Предпросмотр";
             stageTitle.ForeColor = Theme.TextMain;
             stageTitle.Font = new Font(Theme.BodySemiboldFont, 10.5f);
             stageHost.Controls.Add(stageTitle);
 
-            stageMeta = new Label();
+            stageMeta = new SmoothLabel();
             stageMeta.ForeColor = Theme.TextMuted;
             stageMeta.TextAlign = ContentAlignment.MiddleRight;
             stageMeta.Font = new Font(Theme.BodyFont, 9f);
@@ -175,7 +175,7 @@ namespace StickerStudio
                     e.Graphics.DrawLine(p, 0, 0, bottomBar.Width, 0);
             };
 
-            timelineTitle = new Label();
+            timelineTitle = new SmoothLabel();
             timelineTitle.Text = "Фрагмент";
             timelineTitle.ForeColor = Theme.TextMuted;
             timelineTitle.Font = new Font(Theme.BodySemiboldFont, 9f);
@@ -193,7 +193,7 @@ namespace StickerStudio
             timeline.CutChanging += delegate { UpdateTimeLabel(); };
             timeline.CutCommitted += OnCutCommitted;
 
-            timeLabel = new Label();
+            timeLabel = new SmoothLabel();
             timeLabel.ForeColor = Theme.TextMuted;
             timeLabel.TextAlign = ContentAlignment.MiddleRight;
             timeLabel.Font = new Font("Consolas", 9f);
@@ -208,13 +208,13 @@ namespace StickerStudio
             inspector.Width = Theme.S(340);
             inspector.BackColor = Theme.BackPanel;
 
-            inspectorTitle = new Label();
+            inspectorTitle = new SmoothLabel();
             inspectorTitle.Text = "Готовность";
             inspectorTitle.ForeColor = Theme.TextMain;
             inspectorTitle.Font = new Font(Theme.DisplayFont, 14f);
             inspector.Controls.Add(inspectorTitle);
 
-            inspectorCaption = new Label();
+            inspectorCaption = new SmoothLabel();
             inspectorCaption.Text = "Проверка перед экспортом";
             inspectorCaption.ForeColor = Theme.TextMuted;
             inspectorCaption.Font = new Font(Theme.BodyFont, 9f);
@@ -224,7 +224,7 @@ namespace StickerStudio
             BuildCropInspector();
             BuildKeyInspector();
 
-            statusLabel = new Label();
+            statusLabel = new SmoothLabel();
             statusLabel.ForeColor = Theme.TextMuted;
             statusLabel.TextAlign = ContentAlignment.TopLeft;
             statusLabel.Font = new Font(Theme.BodyFont, 9f);
@@ -382,12 +382,12 @@ namespace StickerStudio
             readinessBadge.Strong = true;
             readinessBadge.SetStatus("Статус", "проверка", StudioIcon.Check, Theme.Accent);
 
-            readinessTitle = new Label();
+            readinessTitle = new SmoothLabel();
             readinessTitle.Text = "Подготовка проекта";
             readinessTitle.ForeColor = Theme.TextMain;
             readinessTitle.Font = new Font(Theme.BodySemiboldFont, 10.25f);
 
-            readinessDetail = new Label();
+            readinessDetail = new SmoothLabel();
             readinessDetail.Text = "Проверяю параметры исходника";
             readinessDetail.ForeColor = Theme.TextMuted;
             readinessDetail.Font = new Font(Theme.BodyFont, 9f);
@@ -402,7 +402,7 @@ namespace StickerStudio
             keyBadge = new StatusRow();
             keyBadge.SetStatus("Фон", "без обработки", StudioIcon.Background, Theme.TextMuted);
 
-            sourceInfo = new Label();
+            sourceInfo = new SmoothLabel();
             sourceInfo.ForeColor = Theme.TextMuted;
             sourceInfo.Font = new Font(Theme.BodyFont, 9f);
             sourceInfo.Text = "Исходник\nНет данных";
@@ -510,10 +510,10 @@ namespace StickerStudio
 
         Label MakeInspectorLabel(string text, float size, Color color, bool semibold)
         {
-            Label l = new Label();
+            Label l = new SmoothLabel();
             l.Text = text;
             l.ForeColor = color;
-            l.Font = new Font(semibold ? "Segoe UI Semibold" : "Segoe UI", size);
+            l.Font = new Font(semibold ? Theme.BodySemiboldFont : Theme.BodyFont, size);
             return l;
         }
 
@@ -566,7 +566,7 @@ namespace StickerStudio
 
         Label MakeLbl(string text, int x, int w)
         {
-            Label l = new Label();
+            Label l = new SmoothLabel();
             l.Text = text;
             l.ForeColor = Theme.TextMuted;
             l.TextAlign = ContentAlignment.MiddleLeft;

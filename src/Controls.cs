@@ -10,6 +10,20 @@ using System.Windows.Forms;
 
 namespace StickerStudio
 {
+    class SmoothLabel : Label
+    {
+        public SmoothLabel()
+        {
+            UseCompatibleTextRendering = true;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Theme.PrepareText(e.Graphics);
+            base.OnPaint(e);
+        }
+    }
+
     enum StudioIcon
     {
         None,
@@ -259,6 +273,7 @@ namespace StickerStudio
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            Theme.PrepareText(g);
             g.Clear(Parent != null ? Parent.BackColor : Theme.BackMain);
 
             Color bg;
@@ -431,6 +446,7 @@ namespace StickerStudio
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            Theme.PrepareText(g);
             g.Clear(Parent != null ? Parent.BackColor : Theme.BackMain);
             Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
             Color fill = Color.FromArgb(26, Tone);
@@ -486,6 +502,7 @@ namespace StickerStudio
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            Theme.PrepareText(g);
             g.Clear(Parent != null ? Parent.BackColor : Theme.BackPanel);
             Rectangle r = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
             Color fill = Strong ? Color.FromArgb(34, Tone) : Theme.Surface;
@@ -511,17 +528,25 @@ namespace StickerStudio
             int captionW = Math.Min(Theme.S(112), Math.Max(Theme.S(72), available * 50 / 100));
             using (Font captionFont = new Font(Theme.BodySemiboldFont, 9f))
             using (Font valueFont = new Font(Theme.BodyFont, 9f))
+            using (StringFormat captionFormat = new StringFormat())
+            using (StringFormat valueFormat = new StringFormat())
             {
-                TextRenderer.DrawText(g, Caption, captionFont,
-                    new Rectangle(textX, 0, captionW, Height), Theme.TextMain,
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-                TextRenderer.DrawText(g, Value, valueFont,
-                    new Rectangle(textX + captionW, 0,
-                        Math.Max(1, available - captionW), Height),
-                    Strong ? Theme.TextMain : Theme.TextSoft,
-                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                captionFormat.Alignment = StringAlignment.Near;
+                captionFormat.LineAlignment = StringAlignment.Center;
+                captionFormat.Trimming = StringTrimming.EllipsisCharacter;
+                captionFormat.FormatFlags = StringFormatFlags.NoWrap;
+                valueFormat.Alignment = StringAlignment.Far;
+                valueFormat.LineAlignment = StringAlignment.Center;
+                valueFormat.Trimming = StringTrimming.EllipsisCharacter;
+                valueFormat.FormatFlags = StringFormatFlags.NoWrap;
+                using (SolidBrush captionBrush = new SolidBrush(Theme.TextMain))
+                    g.DrawString(Caption, captionFont, captionBrush,
+                        new RectangleF(textX, 0, captionW, Height), captionFormat);
+                using (SolidBrush valueBrush = new SolidBrush(
+                    Strong ? Theme.TextMain : Theme.TextSoft))
+                    g.DrawString(Value, valueFont, valueBrush,
+                        new RectangleF(textX + captionW, 0,
+                            Math.Max(1, available - captionW), Height), valueFormat);
             }
         }
     }
