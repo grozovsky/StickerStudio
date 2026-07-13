@@ -141,31 +141,39 @@ namespace StickerStudio
                     byte a = alpha[idx];
                     int srcA = px[i + 3];
 
-                    if (a < 252)
+                    // Despill шире самой полупрозрачной кромки. Раньше полностью
+                    // непрозрачный пиксель сразу рядом с matte не обрабатывался и
+                    // после ресайза снова давал зелёную кайму.
+                    double matteInfluence = 1.0 - a / 255.0;
+                    double wSpill = (keyness[idx] - 0.08) / 0.55;
+                    if (wSpill > 0)
                     {
-                        // despill только там, где пиксель похож на ключ:
-                        // легитимные цвета переднего плана того же оттенка не трогаем
-                        double wSpill = (keyness[idx] - 0.1) / 0.5;
-                        if (wSpill > 0)
+                        if (wSpill > 1) wSpill = 1;
+                        // На непрозрачном foreground воздействие мягкое, на matte
+                        // усиливается до полного — сохраняем естественные цвета лица.
+                        wSpill *= 0.35 + matteInfluence * 0.65;
+                        byte c0 = px[i], c1 = px[i + 1], c2 = px[i + 2];
+                        byte other = mainCh == 1 ? Math.Max(c0, c2)
+                                   : mainCh == 2 ? Math.Max(c0, c1)
+                                   : Math.Max(c1, c2);
+                        int mi = i + mainCh;
+                        int spill = px[mi] - other;
+                        if (spill > 0)
                         {
-                            if (wSpill > 1) wSpill = 1;
-                            byte c0 = px[i], c1 = px[i + 1], c2 = px[i + 2];
-                            byte other = mainCh == 1 ? Math.Max(c0, c2)
-                                       : mainCh == 2 ? Math.Max(c0, c1)
-                                       : Math.Max(c1, c2);
-                            int mi = i + mainCh;
-                            int spill = px[mi] - other;
-                            if (spill > 0)
-                            {
-                                px[mi] = (byte)(px[mi] - spill * wSpill);
-                                // вернуть часть яркости нейтрально — края не темнеют
-                                int comp = (int)(spill * wSpill * 0.35);
-                                px[i] = ClampB(px[i] + comp);
-                                px[i + 1] = ClampB(px[i + 1] + comp);
-                                px[i + 2] = ClampB(px[i + 2] + comp);
-                            }
+                            px[mi] = (byte)(px[mi] - spill * wSpill);
+                            // вернуть часть яркости нейтрально — края не темнеют
+                            int comp = (int)(spill * wSpill * 0.35);
+                            px[i] = ClampB(px[i] + comp);
+                            px[i + 1] = ClampB(px[i + 1] + comp);
+                            px[i + 2] = ClampB(px[i + 2] + comp);
                         }
                     }
+
+                    // RGB полностью прозрачных пикселей некоторые Windows-preview
+                    // показывают без alpha. Нейтральный ноль исключает зелёную заливку
+                    // и не влияет на корректные декодеры Telegram.
+                    if (a <= 2)
+                        px[i] = px[i + 1] = px[i + 2] = 0;
 
                     px[i + 3] = (byte)(a * srcA / 255);
                 }

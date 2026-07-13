@@ -35,7 +35,11 @@ namespace StickerStudio
             // иначе частота кадров исходника не трогается
             string fpsPrefix = state.Fps30 ? "fps=30," : "";
 
-            // итоговый фильтр масштабирования
+            // Геометрию делим на две части: crop до keying и scale после него.
+            // Lanczos до удаления фона смешивал зелёный экран с краем объекта,
+            // поэтому экспорт давал кайму, которой не было в live-preview.
+            string preKeyFilter;
+            string postKeyFilter;
             string scaleFilter;
             if (!state.CropRect.IsEmpty)
             {
@@ -44,11 +48,14 @@ namespace StickerStudio
                 int cy = Math.Max(0, Math.Min(c.Y, info.Height - 2));
                 int cw = Math.Min(c.Width, info.Width - cx);
                 int ch = Math.Min(c.Height, info.Height - cy);
-                scaleFilter = "crop=" + cw + ":" + ch + ":" + cx + ":" + cy +
-                    ",scale=" + VideoDoc.StickerSide + ":" + VideoDoc.StickerSide + ":flags=lanczos";
+                preKeyFilter = "crop=" + cw + ":" + ch + ":" + cx + ":" + cy;
+                postKeyFilter = "scale=" + VideoDoc.StickerSide + ":" +
+                    VideoDoc.StickerSide + ":flags=lanczos,setsar=1";
+                scaleFilter = preKeyFilter + "," + postKeyFilter;
             }
             else
             {
+                preKeyFilter = "";
                 int w, h;
                 if (info.Width >= info.Height)
                 {
@@ -60,9 +67,9 @@ namespace StickerStudio
                     h = VideoDoc.StickerSide;
                     w = Even(info.Width * (double)VideoDoc.StickerSide / info.Height);
                 }
-                scaleFilter = "scale=" + w + ":" + h + ":flags=lanczos";
+                postKeyFilter = "scale=" + w + ":" + h + ":flags=lanczos,setsar=1";
+                scaleFilter = postKeyFilter;
             }
-            scaleFilter += ",setsar=1";
 
             string cutArgs = " -ss " + Ffmpeg.Inv(state.CutStart) + " -t " + Ffmpeg.Inv(dur);
 
@@ -82,9 +89,12 @@ namespace StickerStudio
                     string seqDir = Path.Combine(tmpDir, "seq");
                     Directory.CreateDirectory(seqDir);
                     int c1;
+                    string keyPrepFilter = fpsPrefix +
+                        (preKeyFilter.Length > 0 ? preKeyFilter + "," : "") +
+                        "format=rgba";
                     string e1 = Ffmpeg.Run(ffmpeg, "-y -hide_banner -loglevel error" +
                         " -i \"" + sourcePath + "\"" + cutArgs +
-                        " -vf \"" + fpsPrefix + scaleFilter + ",format=rgba\"" +
+                        " -vf \"" + keyPrepFilter + "\"" +
                         " \"" + Path.Combine(seqDir, "f%05d.png") + "\"", out c1);
                     if (c1 != 0) { res.Error = "Ошибка обработки: " + Ffmpeg.LastLine(e1); return res; }
 
@@ -126,7 +136,7 @@ namespace StickerStudio
                 for (int attempt = 1; attempt <= 4; attempt++)
                 {
                     string passLog = Path.Combine(tmpDir, "2p_" + attempt);
-                    string vf = keyed ? "setsar=1" : fpsPrefix + scaleFilter;
+                    string vf = keyed ? postKeyFilter : fpsPrefix + scaleFilter;
                     string common =
                         " " + encodeInputArgs + "\"" + encodeInput + "\"" +
                         (keyed ? "" : cutArgs) +
