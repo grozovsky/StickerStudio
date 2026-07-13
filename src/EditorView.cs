@@ -40,6 +40,9 @@ namespace StickerStudio
         bool playing;
         bool busy;
         bool showingResult;
+        ExactPreviewRenderer exactPreviewRenderer;
+        System.Windows.Forms.Timer exactPreviewTimer;
+        long exactPreviewRevision;
 
         public EditorView()
         {
@@ -47,6 +50,16 @@ namespace StickerStudio
             Dock = DockStyle.Fill;
             tips = new ToolTip();
             BuildUi();
+
+            exactPreviewRenderer = new ExactPreviewRenderer();
+            exactPreviewRenderer.Completed += ExactPreviewCompleted;
+            exactPreviewTimer = new System.Windows.Forms.Timer();
+            exactPreviewTimer.Interval = 160;
+            exactPreviewTimer.Tick += delegate
+            {
+                exactPreviewTimer.Stop();
+                RequestExactPreview();
+            };
         }
 
         void BuildUi()
@@ -612,6 +625,105 @@ namespace StickerStudio
             preview.SetFrame(d.FrameAt(d.State.CutStart));
             UpdateButtons();
             UpdateTimeLabel();
+            ScheduleExactPreview(1);
+        }
+
+        void ScheduleExactPreview(int delayMs)
+        {
+            exactPreviewRevision++;
+            if (exactPreviewTimer != null) exactPreviewTimer.Stop();
+            if (exactPreviewRenderer != null) exactPreviewRenderer.CancelPending();
+            if (preview != null) preview.ClearExactBitmap();
+            if (doc == null || busy || playing || preview.CropMode ||
+                string.IsNullOrEmpty(ffmpegPath)) return;
+
+            exactPreviewTimer.Interval = Math.Max(1, delayMs);
+            exactPreviewTimer.Start();
+        }
+
+        void CancelExactPreview(bool clearBitmap)
+        {
+            exactPreviewRevision++;
+            if (exactPreviewTimer != null) exactPreviewTimer.Stop();
+            if (exactPreviewRenderer != null) exactPreviewRenderer.CancelPending();
+            if (clearBitmap && preview != null) preview.ClearExactBitmap();
+        }
+
+        void RequestExactPreview()
+        {
+            if (doc == null || busy || playing || preview.CropMode ||
+                exactPreviewRenderer == null) return;
+
+            ExactPreviewRequest request = new ExactPreviewRequest();
+            request.Revision = exactPreviewRevision;
+            request.FfmpegPath = ffmpegPath;
+            request.SourcePath = doc.SourcePath;
+            request.Info = doc.Info;
+            request.Time = doc.TimeOfFrame(preview.CurrentFrame);
+            request.CropRect = doc.State.CropRect;
+            request.Key = preview.ActiveKey == null
+                ? new KeySettings()
+                : preview.ActiveKey.Clone();
+            exactPreviewRenderer.Request(request);
+        }
+
+        void RequestEncodedPreview(string outputPath)
+        {
+            if (doc == null || exactPreviewRenderer == null ||
+                string.IsNullOrEmpty(outputPath) || !File.Exists(outputPath)) return;
+
+            exactPreviewRevision++;
+            if (exactPreviewTimer != null) exactPreviewTimer.Stop();
+            exactPreviewRenderer.CancelPending();
+            preview.ClearExactBitmap();
+
+            StickerFrameGeometry geometry = FrameGeometry.Create(doc.Info, doc.State.CropRect);
+            ProbeInfo outputInfo = new ProbeInfo();
+            outputInfo.Ok = true;
+            outputInfo.Width = geometry.OutputSize.Width;
+            outputInfo.Height = geometry.OutputSize.Height;
+            outputInfo.Duration = doc.CutDuration;
+            outputInfo.Fps = doc.State.Fps30 ? 30 : doc.Info.Fps;
+            outputInfo.HasAlpha = true;
+
+            double frameStep = outputInfo.Fps > 0 ? 1.0 / outputInfo.Fps : 0.04;
+            double time = Math.Max(0, timeline.Position - doc.State.CutStart);
+            time = Math.Min(time, Math.Max(0, outputInfo.Duration - frameStep));
+
+            ExactPreviewRequest request = new ExactPreviewRequest();
+            request.Revision = exactPreviewRevision;
+            request.FfmpegPath = ffmpegPath;
+            request.SourcePath = outputPath;
+            request.Info = outputInfo;
+            request.Time = time;
+            request.CropRect = Rectangle.Empty;
+            request.Key = new KeySettings();
+            request.DecodeVp9Alpha = true;
+            exactPreviewRenderer.Request(request);
+        }
+
+        void ExactPreviewCompleted(long revision, Bitmap bitmap)
+        {
+            if (bitmap == null) return;
+            if (IsDisposed || !IsHandleCreated)
+            {
+                bitmap.Dispose();
+                return;
+            }
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (IsDisposed || revision != exactPreviewRevision || doc == null ||
+                        busy || playing || preview.CropMode)
+                    {
+                        bitmap.Dispose();
+                        return;
+                    }
+                    preview.SetExactBitmap(bitmap);
+                });
+            }
+            catch { bitmap.Dispose(); }
         }
 
         Rectangle CropToPreview(Rectangle orig)
@@ -716,6 +828,7 @@ namespace StickerStudio
             btnPlay.Invalidate();
             if (playing)
             {
+                CancelExactPreview(true);
                 playClock.Restart();
                 playTimer.Start();
             }
@@ -724,6 +837,7 @@ namespace StickerStudio
                 playOffset = CurrentPlayTime() - doc.State.CutStart;
                 playClock.Stop();
                 playTimer.Stop();
+                ScheduleExactPreview(1);
             }
         }
 
@@ -753,6 +867,7 @@ namespace StickerStudio
             timeline.Invalidate();
             preview.SetFrame(doc.FrameAt(t));
             UpdateTimeLabel();
+            ScheduleExactPreview(120);
         }
 
         void OnCutCommitted(EditState pre)
@@ -781,6 +896,7 @@ namespace StickerStudio
             preview.CropSel = init;
             preview.CropMode = true;
             preview.AppliedCropPreview = Rectangle.Empty;
+            CancelExactPreview(true);
             ShowCropInspector();
             preview.Invalidate();
         }
@@ -805,6 +921,7 @@ namespace StickerStudio
             ShowDefaultInspector();
             preview.Invalidate();
             UpdateButtons();
+            ScheduleExactPreview(1);
         }
 
         // ---------------- chroma key ----------------
@@ -824,12 +941,15 @@ namespace StickerStudio
             ShowKeyInspector();
             preview.ActiveKey = editingKey;
             preview.BumpKeyVersion();
+            ScheduleExactPreview(120);
         }
 
         void TogglePick()
         {
             preview.PickMode = !preview.PickMode;
             btnPick.SetChecked(preview.PickMode);
+            if (preview.PickMode) CancelExactPreview(true);
+            else ScheduleExactPreview(120);
         }
 
         void OnColorPicked(Color c)
@@ -841,6 +961,7 @@ namespace StickerStudio
             btnPick.SwatchColor = c;
             btnPick.Invalidate();
             preview.BumpKeyVersion();
+            ScheduleExactPreview(160);
         }
 
         void OnKeyParamChanged()
@@ -850,6 +971,7 @@ namespace StickerStudio
             editingKey.ShrinkGrow = slShrink.Value;
             UpdateKeyLabels();
             preview.BumpKeyVersion();
+            ScheduleExactPreview(160);
         }
 
         void UpdateKeyLabels()
@@ -883,6 +1005,7 @@ namespace StickerStudio
                 preview.BumpKeyVersion();
             }
             UpdateButtons();
+            ScheduleExactPreview(1);
         }
 
         void ShowDefaultInspector()
@@ -934,6 +1057,7 @@ namespace StickerStudio
             timeline.Invalidate();
             UpdateButtons();
             UpdateTimeLabel();
+            ScheduleExactPreview(1);
         }
 
         // ---------------- export ----------------
@@ -949,6 +1073,7 @@ namespace StickerStudio
                 return;
             }
             if (playing) TogglePlay();
+            CancelExactPreview(false);
 
             EditState snapshot = doc.State.Clone();
 
@@ -1013,6 +1138,11 @@ namespace StickerStudio
                 (r.AlphaInOutput ? ", с альфой" : ", без альфы") + ")" +
                 (r.FpsWarning ? ". Частота выше 30 fps, Telegram может отклонить файл" : "");
 
+            // После экспорта preview берётся уже из готового VP9 WebM. Поэтому
+            // видимый кадр включает тот же alpha decode и те же codec-артефакты,
+            // которые получит Telegram, а не только промежуточный matte.
+            RequestEncodedPreview(r.OutputPath);
+
             DialogResult d = MessageBox.Show(this,
                 "Стикер готов: " + Path.GetFileName(r.OutputPath) + " (" + kb + ")\n\nПоказать в Проводнике?",
                 "Экспорт завершён", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
@@ -1027,6 +1157,7 @@ namespace StickerStudio
         {
             playTimer.Stop();
             playing = false;
+            CancelExactPreview(true);
         }
 
         // Горячие клавиши редактора (форвардятся из MainForm.ProcessCmdKey)
@@ -1081,6 +1212,21 @@ namespace StickerStudio
             timeline.Invalidate();
             preview.SetFrame(f);
             UpdateTimeLabel();
+            ScheduleExactPreview(80);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (exactPreviewTimer != null) exactPreviewTimer.Dispose();
+                if (exactPreviewRenderer != null)
+                {
+                    exactPreviewRenderer.Completed -= ExactPreviewCompleted;
+                    exactPreviewRenderer.Dispose();
+                }
+            }
+            base.Dispose(disposing);
         }
     }
 }

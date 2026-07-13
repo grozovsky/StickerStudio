@@ -8,6 +8,225 @@ using System.Windows.Forms;
 
 namespace StickerStudio
 {
+    sealed class ExactPreviewRequest
+    {
+        public long Revision;
+        public string FfmpegPath;
+        public string SourcePath;
+        public ProbeInfo Info;
+        public double Time;
+        public Rectangle CropRect;
+        public KeySettings Key;
+        public bool DecodeVp9Alpha;
+    }
+
+    // Быстрые JPEG-кадры остаются для playback. Когда пользователь остановился,
+    // этот worker строит один точный кадр тем же путём, что и export:
+    // native crop -> chroma key -> Lanczos 512.
+    sealed class ExactPreviewRenderer : IDisposable
+    {
+        readonly object sync = new object();
+        readonly AutoResetEvent wake = new AutoResetEvent(false);
+        readonly Thread worker;
+        ExactPreviewRequest pending;
+        System.Diagnostics.Process currentProcess;
+        long cancellationGeneration;
+        bool stopped;
+
+        public event Action<long, Bitmap> Completed;
+
+        public ExactPreviewRenderer()
+        {
+            worker = new Thread(WorkerLoop);
+            worker.IsBackground = true;
+            worker.Name = "StickerStudio exact preview";
+            worker.Start();
+        }
+
+        public void Request(ExactPreviewRequest request)
+        {
+            if (request == null) return;
+            lock (sync)
+            {
+                if (stopped) return;
+                pending = request;
+            }
+            wake.Set();
+        }
+
+        public void CancelPending()
+        {
+            System.Diagnostics.Process process = null;
+            lock (sync)
+            {
+                pending = null;
+                cancellationGeneration++;
+                process = currentProcess;
+            }
+            try
+            {
+                if (process != null && !process.HasExited) process.Kill();
+            }
+            catch { }
+        }
+
+        void WorkerLoop()
+        {
+            while (true)
+            {
+                wake.WaitOne();
+                while (true)
+                {
+                    ExactPreviewRequest request;
+                    long generation;
+                    lock (sync)
+                    {
+                        if (stopped) return;
+                        request = pending;
+                        pending = null;
+                        generation = cancellationGeneration;
+                    }
+                    if (request == null) break;
+
+                    Bitmap bitmap = Render(request);
+                    if (bitmap == null)
+                    {
+                        bool retry;
+                        lock (sync)
+                        {
+                            retry = !stopped && pending == null &&
+                                generation == cancellationGeneration;
+                        }
+                        if (retry) bitmap = Render(request);
+                    }
+                    if (bitmap != null)
+                    {
+                        Action<long, Bitmap> handler = Completed;
+                        if (handler != null) handler(request.Revision, bitmap);
+                        else bitmap.Dispose();
+                    }
+                }
+            }
+        }
+
+        Bitmap Render(ExactPreviewRequest request)
+        {
+            if (request.Info == null || string.IsNullOrEmpty(request.FfmpegPath) ||
+                string.IsNullOrEmpty(request.SourcePath)) return null;
+
+            string tempDir = Path.Combine(Path.GetTempPath(),
+                "ssp_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                StickerFrameGeometry geometry = FrameGeometry.Create(
+                    request.Info, request.CropRect);
+                string nativePath = Path.Combine(tempDir, "native.png");
+                string finalPath = Path.Combine(tempDir, "final.png");
+                string prepFilter = (geometry.PreKeyFilter.Length > 0
+                    ? geometry.PreKeyFilter + "," : "") + "format=rgba";
+
+                int code;
+                RunIsolated(request.FfmpegPath,
+                    "-y -hide_banner -loglevel error " +
+                    (request.DecodeVp9Alpha ? "-c:v libvpx-vp9 " : "") +
+                    "-i \"" + request.SourcePath +
+                    "\" -ss " + Ffmpeg.Inv(request.Time) +
+                    " -frames:v 1 -vf \"" + prepFilter + "\" \"" + nativePath + "\"", out code);
+                if (code != 0 || !File.Exists(nativePath)) return null;
+
+                if (request.Key != null && request.Key.Enabled)
+                {
+                    using (Bitmap source = LoadArgb(nativePath))
+                    {
+                        ChromaKey.Apply(source, request.Key);
+                        source.Save(nativePath, System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                }
+
+                RunIsolated(request.FfmpegPath,
+                    "-y -hide_banner -loglevel error -i \"" + nativePath +
+                    "\" -frames:v 1 -vf \"" + geometry.PostKeyFilter +
+                    "\" \"" + finalPath + "\"", out code);
+                if (code != 0 || !File.Exists(finalPath)) return null;
+                return LoadArgb(finalPath);
+            }
+            catch { return null; }
+            finally
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+
+        string RunIsolated(string executable, string arguments, out int exitCode)
+        {
+            System.Diagnostics.ProcessStartInfo psi =
+                new System.Diagnostics.ProcessStartInfo(executable, arguments);
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.RedirectStandardError = true;
+            System.Diagnostics.Process process = new System.Diagnostics.Process();
+            process.StartInfo = psi;
+            try
+            {
+                // Start + publication are atomic relative to CancelPending().
+                // A cancelled request can no longer start after Kill() missed it.
+                lock (sync)
+                {
+                    if (stopped) { exitCode = -1; return ""; }
+                    process.Start();
+                    currentProcess = process;
+                }
+                string error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                exitCode = process.ExitCode;
+                return error;
+            }
+            catch
+            {
+                exitCode = -1;
+                return "";
+            }
+            finally
+            {
+                lock (sync)
+                {
+                    if (object.ReferenceEquals(currentProcess, process))
+                        currentProcess = null;
+                }
+                process.Dispose();
+            }
+        }
+
+        static Bitmap LoadArgb(string path)
+        {
+            byte[] bytes = File.ReadAllBytes(path);
+            using (MemoryStream stream = new MemoryStream(bytes))
+            using (Image image = Image.FromStream(stream))
+            {
+                Bitmap bitmap = new Bitmap(image.Width, image.Height,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (Graphics graphics = Graphics.FromImage(bitmap))
+                    graphics.DrawImage(image, 0, 0, image.Width, image.Height);
+                return bitmap;
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (sync)
+            {
+                if (stopped) return;
+                stopped = true;
+                pending = null;
+            }
+            CancelPending();
+            wake.Set();
+            try { worker.Join(1000); } catch { }
+            wake.Dispose();
+        }
+    }
+
     // ---------------------------------------------------------------
     //  Превью: шахматка, кадр, кроп-рамка 1:1, пипетка
     // ---------------------------------------------------------------
@@ -26,6 +245,7 @@ namespace StickerStudio
         Bitmap baseBmp; int baseIdx = -1;
         Bitmap keyedBmp; int keyedIdx = -1;
         int keyVersion; int keyedVersion = -1;
+        Bitmap exactBmp;
 
         // drag
         int dragCorner = -1;      // 0..3 = ручки; 4 = перемещение
@@ -47,6 +267,22 @@ namespace StickerStudio
 
         public int CurrentFrame { get { return frameIdx; } }
 
+        public void SetExactBitmap(Bitmap bitmap)
+        {
+            if (object.ReferenceEquals(exactBmp, bitmap)) return;
+            if (exactBmp != null) exactBmp.Dispose();
+            exactBmp = bitmap;
+            Invalidate();
+        }
+
+        public void ClearExactBitmap()
+        {
+            if (exactBmp == null) return;
+            exactBmp.Dispose();
+            exactBmp = null;
+            Invalidate();
+        }
+
         public void BumpKeyVersion()
         {
             keyVersion++;
@@ -57,12 +293,14 @@ namespace StickerStudio
         {
             baseIdx = -1;
             keyedIdx = -1;
+            ClearExactBitmap();
             Invalidate();
         }
 
         Size ContentSize()
         {
             if (Doc == null) return new Size(4, 3);
+            if (!CropMode && exactBmp != null) return exactBmp.Size;
             if (!CropMode && !AppliedCropPreview.IsEmpty)
                 return AppliedCropPreview.Size;
             return new Size(Doc.PreviewW, Doc.PreviewH);
@@ -152,7 +390,8 @@ namespace StickerStudio
             if (Doc == null || Doc.Frames.Count == 0) return;
 
             Rectangle r = ImageScreenRect();
-            Bitmap bmp = CurrentBitmap();
+            bool useExact = !CropMode && exactBmp != null;
+            Bitmap bmp = useExact ? exactBmp : CurrentBitmap();
             if (bmp == null) return;
 
             RectangleF sel = CropMode ? ImageToScreen(CropSel) : RectangleF.Empty;
@@ -175,8 +414,10 @@ namespace StickerStudio
                     }
                 }
 
-                g.InterpolationMode = InterpolationMode.Bilinear;
-                if (!CropMode && !AppliedCropPreview.IsEmpty)
+                g.InterpolationMode = useExact
+                    ? InterpolationMode.HighQualityBicubic
+                    : InterpolationMode.Bilinear;
+                if (!useExact && !CropMode && !AppliedCropPreview.IsEmpty)
                     g.DrawImage(bmp, r, AppliedCropPreview, GraphicsUnit.Pixel);
                 else
                     g.DrawImage(bmp, r);
@@ -326,6 +567,18 @@ namespace StickerStudio
         {
             base.OnMouseUp(e);
             dragCorner = -1;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (baseBmp != null) baseBmp.Dispose();
+                if (keyedBmp != null) keyedBmp.Dispose();
+                if (exactBmp != null) exactBmp.Dispose();
+                baseBmp = keyedBmp = exactBmp = null;
+            }
+            base.Dispose(disposing);
         }
     }
 

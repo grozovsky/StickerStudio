@@ -38,38 +38,12 @@ namespace StickerStudio
             // Геометрию делим на две части: crop до keying и scale после него.
             // Lanczos до удаления фона смешивал зелёный экран с краем объекта,
             // поэтому экспорт давал кайму, которой не было в live-preview.
-            string preKeyFilter;
-            string postKeyFilter;
-            string scaleFilter;
-            if (!state.CropRect.IsEmpty)
-            {
-                Rectangle c = state.CropRect;
-                int cx = Math.Max(0, Math.Min(c.X, info.Width - 2));
-                int cy = Math.Max(0, Math.Min(c.Y, info.Height - 2));
-                int cw = Math.Min(c.Width, info.Width - cx);
-                int ch = Math.Min(c.Height, info.Height - cy);
-                preKeyFilter = "crop=" + cw + ":" + ch + ":" + cx + ":" + cy;
-                postKeyFilter = "scale=" + VideoDoc.StickerSide + ":" +
-                    VideoDoc.StickerSide + ":flags=lanczos,setsar=1";
-                scaleFilter = preKeyFilter + "," + postKeyFilter;
-            }
-            else
-            {
-                preKeyFilter = "";
-                int w, h;
-                if (info.Width >= info.Height)
-                {
-                    w = VideoDoc.StickerSide;
-                    h = Even(info.Height * (double)VideoDoc.StickerSide / info.Width);
-                }
-                else
-                {
-                    h = VideoDoc.StickerSide;
-                    w = Even(info.Width * (double)VideoDoc.StickerSide / info.Height);
-                }
-                postKeyFilter = "scale=" + w + ":" + h + ":flags=lanczos,setsar=1";
-                scaleFilter = postKeyFilter;
-            }
+            StickerFrameGeometry geometry = FrameGeometry.Create(info, state.CropRect);
+            string preKeyFilter = geometry.PreKeyFilter;
+            string postKeyFilter = geometry.PostKeyFilter;
+            string scaleFilter = preKeyFilter.Length > 0
+                ? preKeyFilter + "," + postKeyFilter
+                : postKeyFilter;
 
             string cutArgs = " -ss " + Ffmpeg.Inv(state.CutStart) + " -t " + Ffmpeg.Inv(dur);
 
@@ -222,11 +196,5 @@ namespace StickerStudio
             }
         }
 
-        static int Even(double v)
-        {
-            int n = (int)Math.Round(v);
-            if (n % 2 != 0) n--;
-            return Math.Max(2, n);
-        }
     }
 }

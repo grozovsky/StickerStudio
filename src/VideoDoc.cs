@@ -28,6 +28,64 @@ namespace StickerStudio
         }
     }
 
+    // Одна геометрия для export и точного preview. Crop всегда считается в
+    // координатах оригинала, scale выполняется только после chroma key.
+    class StickerFrameGeometry
+    {
+        public Rectangle Crop;
+        public Size OutputSize;
+        public string PreKeyFilter;
+        public string PostKeyFilter;
+    }
+
+    static class FrameGeometry
+    {
+        public static StickerFrameGeometry Create(ProbeInfo info, Rectangle cropRect)
+        {
+            StickerFrameGeometry g = new StickerFrameGeometry();
+            if (info == null) return g;
+
+            if (!cropRect.IsEmpty)
+            {
+                int cx = Math.Max(0, Math.Min(cropRect.X, info.Width - 2));
+                int cy = Math.Max(0, Math.Min(cropRect.Y, info.Height - 2));
+                int cw = Math.Max(2, Math.Min(cropRect.Width, info.Width - cx));
+                int ch = Math.Max(2, Math.Min(cropRect.Height, info.Height - cy));
+                g.Crop = new Rectangle(cx, cy, cw, ch);
+                g.OutputSize = new Size(VideoDoc.StickerSide, VideoDoc.StickerSide);
+                g.PreKeyFilter = "crop=" + cw + ":" + ch + ":" + cx + ":" + cy;
+            }
+            else
+            {
+                int w, h;
+                if (info.Width >= info.Height)
+                {
+                    w = VideoDoc.StickerSide;
+                    h = Even(info.Height * (double)VideoDoc.StickerSide / info.Width);
+                }
+                else
+                {
+                    h = VideoDoc.StickerSide;
+                    w = Even(info.Width * (double)VideoDoc.StickerSide / info.Height);
+                }
+                g.Crop = Rectangle.Empty;
+                g.OutputSize = new Size(w, h);
+                g.PreKeyFilter = "";
+            }
+
+            g.PostKeyFilter = "scale=" + g.OutputSize.Width + ":" +
+                g.OutputSize.Height + ":flags=lanczos,setsar=1";
+            return g;
+        }
+
+        static int Even(double value)
+        {
+            int n = (int)Math.Round(value);
+            if (n % 2 != 0) n--;
+            return Math.Max(2, n);
+        }
+    }
+
     class VideoDoc : IDisposable
     {
         public const double MaxInputSeconds = 180;  // лимит длины входа
