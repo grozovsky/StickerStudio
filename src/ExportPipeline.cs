@@ -89,7 +89,37 @@ namespace StickerStudio
                             progress("Удаление фона… " + (done * 100 / frames.Length) + "%");
                     }
 
-                    encodeInput = Path.Combine(seqDir, "f%05d.png");
+                    // Lanczos выполняем до VP9, затем расширяем foreground RGB под
+                    // прозрачную кромку уже в конечных 512 px. Иначе yuva420p
+                    // усредняет остаточный green в соседний непрозрачный пиксель.
+                    string scaledDir = Path.Combine(tmpDir, "scaled");
+                    Directory.CreateDirectory(scaledDir);
+                    int c2;
+                    string e2 = Ffmpeg.Run(ffmpeg,
+                        "-y -hide_banner -loglevel error -framerate " + Ffmpeg.Inv(fps) +
+                        " -i \"" + Path.Combine(seqDir, "f%05d.png") +
+                        "\" -vf \"" + postKeyFilter + "\" \"" +
+                        Path.Combine(scaledDir, "f%05d.png") + "\"", out c2);
+                    if (c2 != 0)
+                    {
+                        res.Error = "Ошибка очистки кромки: " + Ffmpeg.LastLine(e2);
+                        return res;
+                    }
+
+                    string[] scaledFrames = Directory.GetFiles(scaledDir, "f*.png")
+                        .OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToArray();
+                    if (scaledFrames.Length == 0)
+                    { res.Error = "Не удалось подготовить кромку"; return res; }
+                    foreach (string f in scaledFrames)
+                    {
+                        using (Bitmap bmp = LoadArgb(f))
+                        {
+                            ChromaKey.ProtectTransparentColors(bmp, 3);
+                            bmp.Save(f, System.Drawing.Imaging.ImageFormat.Png);
+                        }
+                    }
+
+                    encodeInput = Path.Combine(scaledDir, "f%05d.png");
                     encodeInputArgs = "-framerate " + Ffmpeg.Inv(fps) + " -i ";
                 }
                 else
@@ -110,7 +140,7 @@ namespace StickerStudio
                 for (int attempt = 1; attempt <= 4; attempt++)
                 {
                     string passLog = Path.Combine(tmpDir, "2p_" + attempt);
-                    string vf = keyed ? postKeyFilter : fpsPrefix + scaleFilter;
+                    string vf = keyed ? "setsar=1" : fpsPrefix + scaleFilter;
                     string common =
                         " " + encodeInputArgs + "\"" + encodeInput + "\"" +
                         (keyed ? "" : cutArgs) +

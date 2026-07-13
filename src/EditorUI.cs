@@ -151,7 +151,10 @@ namespace StickerStudio
                     "\" -frames:v 1 -vf \"" + geometry.PostKeyFilter +
                     "\" \"" + finalPath + "\"", generation, out code);
                 if (code != 0 || !File.Exists(finalPath)) return null;
-                return LoadArgb(finalPath);
+                Bitmap final = LoadArgb(finalPath);
+                if (request.Key != null && request.Key.Enabled)
+                    ChromaKey.ProtectTransparentColors(final, 3);
+                return final;
             }
             catch { return null; }
             finally
@@ -638,6 +641,11 @@ namespace StickerStudio
                     return null;
                 }
 
+                if (request.Key != null && request.Key.Enabled &&
+                    !ProtectRawFrames(rawPath, geometry.OutputSize.Width,
+                        geometry.OutputSize.Height, generation))
+                    return null;
+
                 int frameBytes = checked(geometry.OutputSize.Width *
                     geometry.OutputSize.Height * 4);
                 long length = new FileInfo(rawPath).Length;
@@ -728,6 +736,34 @@ namespace StickerStudio
         {
             lock (sync)
                 return stopped || generation != cancellationGeneration;
+        }
+
+        bool ProtectRawFrames(string path, int width, int height, long generation)
+        {
+            int frameBytes = checked(width * height * 4);
+            byte[] frame = new byte[frameBytes];
+            using (FileStream stream = new FileStream(path, FileMode.Open,
+                FileAccess.ReadWrite, FileShare.None, frameBytes))
+            {
+                long frames = stream.Length / frameBytes;
+                for (long index = 0; index < frames; index++)
+                {
+                    if (IsCancelled(generation)) return false;
+                    stream.Position = index * frameBytes;
+                    int read = 0;
+                    while (read < frameBytes)
+                    {
+                        int n = stream.Read(frame, read, frameBytes - read);
+                        if (n <= 0) return false;
+                        read += n;
+                    }
+                    ChromaKey.ProtectTransparentColors(frame, width, height,
+                        width * 4, 3);
+                    stream.Position = index * frameBytes;
+                    stream.Write(frame, 0, frameBytes);
+                }
+            }
+            return true;
         }
 
         string RunIsolated(string executable, string arguments, long generation,
