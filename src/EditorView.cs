@@ -768,6 +768,7 @@ namespace StickerStudio
                 playbackCache = null;
             }
             if (preview != null) preview.ClearPlaybackBitmap();
+            if (preview != null) preview.SetProcessing(false, null, null);
             if (doc == null || busy || playing || preview.CropMode ||
                 string.IsNullOrEmpty(ffmpegPath)) return;
 
@@ -793,6 +794,9 @@ namespace StickerStudio
                 ? new KeySettings()
                 : preview.ActiveKey.Clone();
             playbackCacheBuilding = true;
+            preview.SetProcessing(true,
+                "Готовим чёткое воспроизведение",
+                "Подготавливаем кадры 512 × 512");
             playbackPreviewRenderer.Request(request);
         }
 
@@ -815,6 +819,7 @@ namespace StickerStudio
                         return;
                     }
                     playbackCacheBuilding = false;
+                    preview.SetProcessing(false, null, null);
                     if (playbackCache != null) playbackCache.Dispose();
                     playbackCache = cache;
                     playbackFrameIndex = -1;
@@ -839,6 +844,7 @@ namespace StickerStudio
                     if (shuttingDown || IsDisposed || revision != playbackCacheRevision) return;
                     playbackCacheBuilding = false;
                     playWhenCacheReady = false;
+                    preview.SetProcessing(false, null, null);
                     statusLabel.ForeColor = Theme.Err;
                     statusLabel.Text = "Не удалось подготовить чёткое воспроизведение: " + error;
                 });
@@ -1310,6 +1316,7 @@ namespace StickerStudio
             if (playbackPreviewRenderer != null) playbackPreviewRenderer.CancelPending();
             playbackCacheBuilding = false;
             playWhenCacheReady = false;
+            preview.SetProcessing(false, null, null);
 
             EditState snapshot = doc.State.Clone();
 
@@ -1408,6 +1415,7 @@ namespace StickerStudio
                 playbackCache = null;
             }
             if (preview != null) preview.ClearPlaybackBitmap();
+            if (preview != null) preview.SetProcessing(false, null, null);
             btnPlay.Icon = StudioIcon.Play;
             btnPlay.Invalidate();
         }

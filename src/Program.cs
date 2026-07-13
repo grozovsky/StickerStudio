@@ -727,9 +727,12 @@ namespace StickerStudio
                     ctaFormat.Alignment = StringAlignment.Near;
                     ctaFormat.LineAlignment = StringAlignment.Center;
                     ctaFormat.FormatFlags = StringFormatFlags.NoWrap;
+                    ctaFormat.Trimming = StringTrimming.None;
+                    float textX = groupX + ctaIcon + Theme.S(8);
                     g.DrawString(ctaText, fb, ctaBrush,
-                        new RectangleF(groupX + ctaIcon + Theme.S(8), cta.Top,
-                            cs.Width + Theme.S(2), cta.Height), ctaFormat);
+                        new RectangleF(textX, cta.Top,
+                            Math.Max(1, cta.Right - Theme.S(12) - textX), cta.Height),
+                        ctaFormat);
                 }
 
                 string formats = "MOV    /    WEBM    /    MP4";

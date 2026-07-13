@@ -856,6 +856,11 @@ namespace StickerStudio
         int keyVersion; int keyedVersion = -1;
         Bitmap exactBmp;
         Bitmap playbackBmp;
+        bool processing;
+        string processingTitle = "Готовим чёткое воспроизведение";
+        string processingDetail = "Подготавливаем кадры 512 × 512";
+        int processingPhase;
+        System.Windows.Forms.Timer processingTimer;
 
         // drag
         int dragCorner = -1;      // 0..3 = ручки; 4 = перемещение
@@ -868,6 +873,32 @@ namespace StickerStudio
         {
             DoubleBuffered = true;
             ResizeRedraw = true;
+            processingTimer = new System.Windows.Forms.Timer();
+            processingTimer.Interval = 70;
+            processingTimer.Tick += delegate
+            {
+                processingPhase = (processingPhase + 14) % 360;
+                if (processing) Invalidate();
+            };
+        }
+
+        public void SetProcessing(bool value, string title, string detail)
+        {
+            processing = value;
+            if (!string.IsNullOrEmpty(title)) processingTitle = title;
+            if (!string.IsNullOrEmpty(detail)) processingDetail = detail;
+            if (processing)
+            {
+                processingPhase = 0;
+                processingTimer.Start();
+                AccessibleDescription = processingTitle + ". " + processingDetail;
+            }
+            else
+            {
+                processingTimer.Stop();
+                AccessibleDescription = null;
+            }
+            Invalidate();
         }
 
         public void SetFrame(int idx)
@@ -1081,7 +1112,11 @@ namespace StickerStudio
                 using (Pen fp = new Pen(Color.FromArgb(72, Color.White), 1f))
                     g.DrawPath(fp, frame);
 
-                if (!CropMode) return;
+                if (!CropMode)
+                {
+                    if (processing) DrawProcessingOverlay(g, r);
+                    return;
+                }
 
                 // Ручки остаются поверх клипа, чтобы их не обрезало у края кадра.
                 int hs = Theme.S(11);
@@ -1198,10 +1233,65 @@ namespace StickerStudio
             dragCorner = -1;
         }
 
+        void DrawProcessingOverlay(Graphics g, Rectangle imageRect)
+        {
+            Theme.PrepareText(g);
+            int sidePad = Theme.S(18);
+            int width = Math.Max(1, Math.Min(Theme.S(360),
+                imageRect.Width - sidePad * 2));
+            int height = Theme.S(68);
+            Rectangle panel = new Rectangle(
+                imageRect.X + (imageRect.Width - width) / 2,
+                imageRect.Y + (imageRect.Height - height) / 2,
+                width, height);
+
+            using (GraphicsPath path = StyledButton.Rounded(panel, Theme.S(12)))
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(242, Theme.SurfaceRaised)))
+            using (Pen border = new Pen(Color.FromArgb(90, Theme.BorderHover), 1f))
+            {
+                g.FillPath(fill, path);
+                g.DrawPath(border, path);
+            }
+
+            int spinnerSide = Theme.S(24);
+            Rectangle spinner = new Rectangle(panel.X + Theme.S(18),
+                panel.Y + (panel.Height - spinnerSide) / 2, spinnerSide, spinnerSide);
+            using (Pen track = new Pen(Color.FromArgb(52, Theme.TextSoft), Theme.S(2)))
+            using (Pen arc = new Pen(Theme.Accent2, Theme.S(2)))
+            {
+                track.StartCap = track.EndCap = LineCap.Round;
+                arc.StartCap = arc.EndCap = LineCap.Round;
+                g.DrawEllipse(track, spinner);
+                g.DrawArc(arc, spinner, processingPhase, 105);
+            }
+
+            int textX = spinner.Right + Theme.S(13);
+            int textW = Math.Max(1, panel.Right - Theme.S(14) - textX);
+            using (Font titleFont = new Font(Theme.BodySemiboldFont, 9.25f))
+            using (Font detailFont = new Font(Theme.BodyFont, 8.25f))
+            using (SolidBrush titleBrush = new SolidBrush(Theme.TextMain))
+            using (SolidBrush detailBrush = new SolidBrush(Theme.TextMuted))
+            using (StringFormat format = new StringFormat())
+            {
+                format.FormatFlags = StringFormatFlags.NoWrap;
+                format.Trimming = StringTrimming.EllipsisCharacter;
+                g.DrawString(processingTitle, titleFont, titleBrush,
+                    new RectangleF(textX, panel.Y + Theme.S(13), textW, Theme.S(22)), format);
+                g.DrawString(processingDetail, detailFont, detailBrush,
+                    new RectangleF(textX, panel.Y + Theme.S(36), textW, Theme.S(20)), format);
+            }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
+                if (processingTimer != null)
+                {
+                    processingTimer.Stop();
+                    processingTimer.Dispose();
+                    processingTimer = null;
+                }
                 if (baseBmp != null) baseBmp.Dispose();
                 if (keyedBmp != null) keyedBmp.Dispose();
                 if (exactBmp != null) exactBmp.Dispose();
