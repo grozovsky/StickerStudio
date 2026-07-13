@@ -259,7 +259,7 @@ namespace StickerStudio
                 if (Math.Abs(e.X - corners[i].X) <= grab && Math.Abs(e.Y - corners[i].Y) <= grab)
                 {
                     dragCorner = i;
-                    // противоположный угол — якорь
+                    // противоположный угол - якорь
                     PointF op = corners[(i + 2) % 4];
                     PointF opImg = ScreenToImage(Point.Round(op));
                     dragAnchor = opImg;
@@ -340,11 +340,13 @@ namespace StickerStudio
 
         public event Action<double> SeekRequested;
         public event Action CutChanging;                    // во время драга
-        public event Action<EditState> CutCommitted;        // отпустили мышь; аргумент — состояние ДО
+        public event Action<EditState> CutCommitted;        // отпустили мышь; аргумент - состояние ДО
 
         int dragMode; // 0 нет, 1 левая ручка, 2 правая, 3 окно, 4 seek
         double dragGrabOffset;
         EditState preDrag;
+        bool hoverScrub;
+        int hoverScrubX;
 
         Bitmap strip;       // кэш филмстрипа под текущий размер
         int stripW, stripH;
@@ -353,6 +355,9 @@ namespace StickerStudio
         {
             DoubleBuffered = true;
             ResizeRedraw = true;
+            Cursor = Cursors.Default;
+            AccessibleRole = AccessibleRole.Slider;
+            AccessibleName = "Позиция и границы фрагмента";
         }
 
         public void ResetStrip()
@@ -364,8 +369,14 @@ namespace StickerStudio
         Rectangle TrackRect()
         {
             int m = Theme.S(8);
-            return new Rectangle(m, Theme.S(8),
-                Math.Max(20, Width - m * 2), Math.Max(12, Height - Theme.S(12)));
+            return new Rectangle(m, Theme.S(26),
+                Math.Max(20, Width - m * 2), Math.Max(12, Height - Theme.S(34)));
+        }
+
+        Rectangle ScrubRect()
+        {
+            int m = Theme.S(8);
+            return new Rectangle(m, 0, Math.Max(20, Width - m * 2), Theme.S(22));
         }
 
         // Филмстрип собирается один раз под текущую ширину из кадров превью
@@ -418,10 +429,34 @@ namespace StickerStudio
             if (Doc == null || Doc.Info == null) return;
 
             Rectangle tr = TrackRect();
+            Rectangle sr = ScrubRect();
             EnsureStrip(tr);
 
             int x1 = TimeToX(Doc.State.CutStart);
             int x2 = TimeToX(Doc.State.CutEnd);
+
+            // Отдельная широкая scrub-зона: по ней можно быстро искать кадр,
+            // не сдвигая выбранный фрагмент и не попадая в trim-ручки.
+            int railY = sr.Top + Theme.S(11);
+            using (Pen rail = new Pen(Color.FromArgb(92, Theme.TextMuted), 1f))
+                g.DrawLine(rail, sr.Left, railY, sr.Right, railY);
+            using (Pen selected = new Pen(Color.FromArgb(180, Theme.Accent2), 2f))
+                g.DrawLine(selected, x1, railY, x2, railY);
+            using (Pen tick = new Pen(Color.FromArgb(82, Theme.TextMuted), 1f))
+            {
+                for (int i = 0; i <= 8; i++)
+                {
+                    int tx = sr.Left + i * sr.Width / 8;
+                    int half = Theme.S(i % 2 == 0 ? 4 : 2);
+                    g.DrawLine(tick, tx, railY - half, tx, railY + half);
+                }
+            }
+            if (hoverScrub && dragMode == 0)
+            {
+                int d = Theme.S(6);
+                using (SolidBrush hb = new SolidBrush(Color.FromArgb(125, Theme.TextSoft)))
+                    g.FillEllipse(hb, hoverScrubX - d / 2, railY - d / 2, d, d);
+            }
 
             // филмстрип, затемнение всего вне CUT-отрезка
             using (GraphicsPath tp = StyledButton.Rounded(tr, Theme.S(6)))
@@ -462,19 +497,18 @@ namespace StickerStudio
                 }
             }
 
-            // плейхед: линия + треугольник сверху
+            // Плейхед связан с отдельным scrub-рельсом и имеет крупную точку захвата.
             int px = TimeToX(Position);
-            using (Pen p = new Pen(Theme.Accent2, 2f))
-                g.DrawLine(p, px, tr.Y - Theme.S(2), px, tr.Bottom + Theme.S(2));
+            using (Pen p = new Pen(Theme.Accent2, 1.5f))
+                g.DrawLine(p, px, railY, px, tr.Bottom + Theme.S(2));
+            int knob = Theme.S(10);
+            Rectangle knobRect = new Rectangle(px - knob / 2, railY - knob / 2, knob, knob);
             using (SolidBrush wb = new SolidBrush(Theme.Accent2))
+                g.FillEllipse(wb, knobRect);
+            using (Pen ring = new Pen(Theme.Surface, Math.Max(1f, Theme.S(1))))
             {
-                Point[] tri = new Point[]
-                {
-                    new Point(px - Theme.S(4), tr.Y - Theme.S(7)),
-                    new Point(px + Theme.S(4), tr.Y - Theme.S(7)),
-                    new Point(px, tr.Y - Theme.S(1))
-                };
-                g.FillPolygon(wb, tri);
+                knobRect.Inflate(Theme.S(1), Theme.S(1));
+                g.DrawEllipse(ring, knobRect);
             }
         }
 
@@ -483,13 +517,22 @@ namespace StickerStudio
             base.OnMouseDown(e);
             if (Doc == null) return;
             Rectangle tr = TrackRect();
+            Rectangle sr = ScrubRect();
             int x1 = TimeToX(Doc.State.CutStart);
             int x2 = TimeToX(Doc.State.CutEnd);
-            int grab = Theme.S(9);
 
             preDrag = Doc.State.Clone();
 
-            grab = Theme.S(12);
+            if (sr.Contains(e.Location))
+            {
+                dragMode = 4;
+                Capture = true;
+                if (SeekRequested != null) SeekRequested(XToTime(e.X));
+                Invalidate();
+                return;
+            }
+
+            int grab = Theme.S(14);
             if (Math.Abs(e.X - x1) <= grab) dragMode = 1;
             else if (Math.Abs(e.X - x2) <= grab) dragMode = 2;
             else if (e.X > x1 && e.X < x2 && tr.Contains(e.Location))
@@ -511,12 +554,24 @@ namespace StickerStudio
 
             if (dragMode == 0)
             {
+                Rectangle sr = ScrubRect();
+                if (sr.Contains(e.Location))
+                {
+                    bool changed = !hoverScrub || hoverScrubX != e.X;
+                    hoverScrub = true;
+                    hoverScrubX = Math.Max(sr.Left, Math.Min(sr.Right, e.X));
+                    Cursor = Cursors.Hand;
+                    if (changed) Invalidate();
+                    return;
+                }
+                if (hoverScrub) { hoverScrub = false; Invalidate(); }
                 int x1 = TimeToX(Doc.State.CutStart);
                 int x2 = TimeToX(Doc.State.CutEnd);
-                int grab = Theme.S(9);
+                int grab = Theme.S(14);
                 if (Math.Abs(e.X - x1) <= grab || Math.Abs(e.X - x2) <= grab)
                     Cursor = Cursors.SizeWE;
-                else if (e.X > x1 && e.X < x2) Cursor = Cursors.Hand;
+                else if (e.X > x1 && e.X < x2 && TrackRect().Contains(e.Location))
+                    Cursor = Cursors.SizeAll;
                 else Cursor = Cursors.Default;
                 return;
             }
@@ -548,6 +603,7 @@ namespace StickerStudio
             else if (dragMode == 4)
             {
                 if (SeekRequested != null) SeekRequested(t);
+                Invalidate();
                 return;
             }
 
@@ -566,6 +622,17 @@ namespace StickerStudio
             }
             dragMode = 0;
             preDrag = null;
+            Capture = false;
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            if (hoverScrub)
+            {
+                hoverScrub = false;
+                Invalidate();
+            }
+            base.OnMouseLeave(e);
         }
     }
 }

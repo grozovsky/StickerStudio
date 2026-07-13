@@ -20,6 +20,7 @@ namespace StickerStudio
         StyledButton btnBack, btnUndo, btnCrop, btnKey, btnPlay, btnExport;
         StyledButton btnKeyApply, btnKeyCancel, btnCropApply, btnCropCancel, btnPick;
         Panel toolbar, content, toolRail, mainColumn, stageHost, bottomBar;
+        Panel toolRailDivider, inspectorDivider;
         Panel inspector, inspectorDefault, keyPanel, cropPanel;
         SurfacePanel readinessCard, sourceChip;
         UxLiveMark studioMark;
@@ -69,7 +70,7 @@ namespace StickerStudio
             appLabel.AutoSize = true;
             appLabel.Text = "uxlive";
             appLabel.ForeColor = Theme.TextMain;
-            appLabel.Font = new Font("Bahnschrift SemiBold", 13f);
+            appLabel.Font = new Font(Theme.DisplayFont, 13f);
             appLabel.Location = new Point(Theme.S(71), Theme.S(15));
             toolbar.Controls.Add(appLabel);
 
@@ -77,7 +78,7 @@ namespace StickerStudio
             appMetaLabel.AutoSize = true;
             appMetaLabel.Text = "Sticker Studio  /  Telegram";
             appMetaLabel.ForeColor = Theme.TextMuted;
-            appMetaLabel.Font = new Font("Segoe UI", 8.75f);
+            appMetaLabel.Font = new Font(Theme.BodyFont, 8.75f);
             appMetaLabel.Location = new Point(Theme.S(72), Theme.S(41));
             toolbar.Controls.Add(appMetaLabel);
 
@@ -91,14 +92,14 @@ namespace StickerStudio
             fileLabel = new Label();
             fileLabel.ForeColor = Theme.TextMain;
             fileLabel.TextAlign = ContentAlignment.MiddleLeft;
-            fileLabel.Font = new Font("Segoe UI Semibold", 9f);
+            fileLabel.Font = new Font(Theme.BodySemiboldFont, 9f);
             fileLabel.AutoEllipsis = true;
             sourceChip.Controls.Add(fileLabel);
 
             fileMetaLabel = new Label();
             fileMetaLabel.ForeColor = Theme.TextMuted;
             fileMetaLabel.TextAlign = ContentAlignment.MiddleLeft;
-            fileMetaLabel.Font = new Font("Segoe UI", 8.25f);
+            fileMetaLabel.Font = new Font(Theme.BodyFont, 8.25f);
             fileMetaLabel.AutoEllipsis = true;
             sourceChip.Controls.Add(fileMetaLabel);
 
@@ -120,34 +121,27 @@ namespace StickerStudio
             content.BackColor = Theme.BackMain;
 
             toolRail = new Panel();
-            toolRail.Dock = DockStyle.Left;
+            toolRail.Dock = DockStyle.None;
             toolRail.Width = Theme.S(84);
             toolRail.BackColor = Theme.BackPanel;
-            toolRail.Paint += delegate(object sender, PaintEventArgs e)
-            {
-                using (Pen p = new Pen(Color.FromArgb(28, Color.White), 1f))
-                    e.Graphics.DrawLine(p, toolRail.Width - 1, 0, toolRail.Width - 1, toolRail.Height);
-            };
 
-            Label toolsLabel = new Label();
-            toolsLabel.Text = "Инструменты";
-            toolsLabel.TextAlign = ContentAlignment.MiddleCenter;
-            toolsLabel.ForeColor = Theme.TextMuted;
-            toolsLabel.Font = new Font("Segoe UI", 9f);
-            toolsLabel.SetBounds(0, Theme.S(13), toolRail.Width, Theme.S(22));
-            toolRail.Controls.Add(toolsLabel);
-
-            btnCrop = MakeToolBtn(StudioIcon.Crop, "Обрезать", Theme.S(43));
-            btnKey = MakeToolBtn(StudioIcon.Background, "Убрать фон", Theme.S(119));
+            btnCrop = MakeToolBtn(StudioIcon.Crop, "Обрезать", Theme.S(14));
+            btnKey = MakeToolBtn(StudioIcon.Background, "Убрать фон", Theme.S(90));
             btnCrop.Click += delegate { StartCrop(); };
             btnKey.Click += delegate { OpenKeyPanel(); };
             toolRail.Controls.Add(btnCrop);
             toolRail.Controls.Add(btnKey);
+            toolRailDivider = new Panel();
+            toolRailDivider.Dock = DockStyle.Right;
+            toolRailDivider.Width = Math.Max(1, Theme.S(1));
+            toolRailDivider.BackColor = Color.FromArgb(42, Color.White);
+            toolRail.Controls.Add(toolRailDivider);
+            toolRailDivider.BringToFront();
             tips.SetToolTip(btnCrop, "Выбрать квадратную зону стикера 512 × 512 (C)");
             tips.SetToolTip(btnKey, "Убрать однотонный фон (B)");
 
             mainColumn = new Panel();
-            mainColumn.Dock = DockStyle.Fill;
+            mainColumn.Dock = DockStyle.None;
             mainColumn.BackColor = Theme.BackMain;
 
             stageHost = new Panel();
@@ -158,13 +152,13 @@ namespace StickerStudio
             stageTitle = new Label();
             stageTitle.Text = "Предпросмотр";
             stageTitle.ForeColor = Theme.TextMain;
-            stageTitle.Font = new Font("Segoe UI Semibold", 10.5f);
+            stageTitle.Font = new Font(Theme.BodySemiboldFont, 10.5f);
             stageHost.Controls.Add(stageTitle);
 
             stageMeta = new Label();
             stageMeta.ForeColor = Theme.TextMuted;
             stageMeta.TextAlign = ContentAlignment.MiddleRight;
-            stageMeta.Font = new Font("Segoe UI", 9f);
+            stageMeta.Font = new Font(Theme.BodyFont, 9f);
             stageHost.Controls.Add(stageMeta);
 
             preview = new PreviewControl();
@@ -173,7 +167,7 @@ namespace StickerStudio
 
             bottomBar = new Panel();
             bottomBar.Dock = DockStyle.Bottom;
-            bottomBar.Height = Theme.S(132);
+            bottomBar.Height = Theme.S(140);
             bottomBar.BackColor = Theme.Surface;
             bottomBar.Paint += delegate(object sender, PaintEventArgs e)
             {
@@ -184,7 +178,7 @@ namespace StickerStudio
             timelineTitle = new Label();
             timelineTitle.Text = "Фрагмент";
             timelineTitle.ForeColor = Theme.TextMuted;
-            timelineTitle.Font = new Font("Segoe UI Semibold", 9f);
+            timelineTitle.Font = new Font(Theme.BodySemiboldFont, 9f);
             bottomBar.Controls.Add(timelineTitle);
 
             btnPlay = new StyledButton();
@@ -210,25 +204,20 @@ namespace StickerStudio
 
             // ---------- readiness / tool inspector ----------
             inspector = new Panel();
-            inspector.Dock = DockStyle.Right;
+            inspector.Dock = DockStyle.None;
             inspector.Width = Theme.S(340);
             inspector.BackColor = Theme.BackPanel;
-            inspector.Paint += delegate(object sender, PaintEventArgs e)
-            {
-                using (Pen p = new Pen(Color.FromArgb(30, Color.White), 1f))
-                    e.Graphics.DrawLine(p, 0, 0, 0, inspector.Height);
-            };
 
             inspectorTitle = new Label();
             inspectorTitle.Text = "Готовность";
             inspectorTitle.ForeColor = Theme.TextMain;
-            inspectorTitle.Font = new Font("Bahnschrift SemiBold", 14f);
+            inspectorTitle.Font = new Font(Theme.DisplayFont, 14f);
             inspector.Controls.Add(inspectorTitle);
 
             inspectorCaption = new Label();
             inspectorCaption.Text = "Проверка перед экспортом";
             inspectorCaption.ForeColor = Theme.TextMuted;
-            inspectorCaption.Font = new Font("Segoe UI", 9f);
+            inspectorCaption.Font = new Font(Theme.BodyFont, 9f);
             inspector.Controls.Add(inspectorCaption);
 
             BuildDefaultInspector();
@@ -238,15 +227,22 @@ namespace StickerStudio
             statusLabel = new Label();
             statusLabel.ForeColor = Theme.TextMuted;
             statusLabel.TextAlign = ContentAlignment.TopLeft;
-            statusLabel.Font = new Font("Segoe UI", 9f);
+            statusLabel.Font = new Font(Theme.BodyFont, 9f);
             inspector.Controls.Add(statusLabel);
 
             btnExport = new StyledButton();
             btnExport.Icon = StudioIcon.Export;
             btnExport.Text = "Экспортировать WebM";
-            btnExport.Font = new Font("Segoe UI Semibold", 10f);
+            btnExport.Font = new Font(Theme.BodySemiboldFont, 10f);
             btnExport.Click += delegate { DoExport(); };
             inspector.Controls.Add(btnExport);
+
+            inspectorDivider = new Panel();
+            inspectorDivider.Dock = DockStyle.Left;
+            inspectorDivider.Width = Math.Max(1, Theme.S(1));
+            inspectorDivider.BackColor = Color.FromArgb(44, Color.White);
+            inspector.Controls.Add(inspectorDivider);
+            inspectorDivider.BringToFront();
 
             bottomBar.Resize += delegate { LayoutBottomBar(); };
             inspector.Resize += delegate { LayoutInspector(); };
@@ -278,8 +274,18 @@ namespace StickerStudio
             toolbar.SetBounds(0, 0, ClientSize.Width, Theme.S(76));
             content.SetBounds(0, toolbar.Bottom, ClientSize.Width,
                 Math.Max(0, ClientSize.Height - toolbar.Height));
-            if (inspector != null)
-                inspector.Width = Theme.S(ClientSize.Width >= Theme.S(1280) ? 340 : 320);
+            if (inspector != null && toolRail != null && mainColumn != null)
+            {
+                int railW = Theme.S(84);
+                int inspectorW = Theme.S(ClientSize.Width >= Theme.S(1280) ? 340 : 320);
+                int workspaceH = content.ClientSize.Height;
+                int workspaceW = content.ClientSize.Width;
+                toolRail.SetBounds(0, 0, railW, workspaceH);
+                inspector.SetBounds(Math.Max(railW, workspaceW - inspectorW), 0,
+                    inspectorW, workspaceH);
+                mainColumn.SetBounds(railW, 0,
+                    Math.Max(1, workspaceW - railW - inspectorW), workspaceH);
+            }
         }
 
         void LayoutBottomBar()
@@ -289,9 +295,9 @@ namespace StickerStudio
             timelineTitle.SetBounds(Theme.S(24), Theme.S(14), Theme.S(100), Theme.S(22));
             timeLabel.SetBounds(Theme.S(130), Theme.S(12),
                 Math.Max(Theme.S(180), W - Theme.S(154)), Theme.S(24));
-            btnPlay.SetBounds(Theme.S(22), Theme.S(53), Theme.S(50), Theme.S(50));
-            timeline.SetBounds(Theme.S(88), Theme.S(45),
-                Math.Max(Theme.S(100), W - Theme.S(112)), Theme.S(66));
+            btnPlay.SetBounds(Theme.S(22), Theme.S(64), Theme.S(44), Theme.S(44));
+            timeline.SetBounds(Theme.S(78), Theme.S(38),
+                Math.Max(Theme.S(100), W - Theme.S(102)), Theme.S(86));
         }
 
         void LayoutToolbar()
@@ -336,9 +342,13 @@ namespace StickerStudio
             int exportH = Theme.S(50);
             int exportY = H - exportH - Theme.S(20);
             int statusY = exportY - Theme.S(56);
-            inspectorDefault.SetBounds(0, panelTop, W, Math.Max(Theme.S(180), statusY - panelTop));
-            cropPanel.SetBounds(0, panelTop, W, Math.Max(Theme.S(210), H - panelTop - Theme.S(20)));
-            keyPanel.SetBounds(0, panelTop, W, Math.Max(Theme.S(310), H - panelTop - Theme.S(20)));
+            int dividerW = Math.Max(1, Theme.S(1));
+            inspectorDefault.SetBounds(dividerW, panelTop, Math.Max(1, W - dividerW),
+                Math.Max(Theme.S(180), statusY - panelTop));
+            cropPanel.SetBounds(dividerW, panelTop, Math.Max(1, W - dividerW),
+                Math.Max(Theme.S(210), H - panelTop - Theme.S(20)));
+            keyPanel.SetBounds(dividerW, panelTop, Math.Max(1, W - dividerW),
+                Math.Max(Theme.S(310), H - panelTop - Theme.S(20)));
             statusLabel.SetBounds(pad, statusY, W - pad * 2, Theme.S(46));
             btnExport.SetBounds(pad, exportY, W - pad * 2, exportH);
 
@@ -375,12 +385,12 @@ namespace StickerStudio
             readinessTitle = new Label();
             readinessTitle.Text = "Подготовка проекта";
             readinessTitle.ForeColor = Theme.TextMain;
-            readinessTitle.Font = new Font("Segoe UI Semibold", 10.25f);
+            readinessTitle.Font = new Font(Theme.BodySemiboldFont, 10.25f);
 
             readinessDetail = new Label();
             readinessDetail.Text = "Проверяю параметры исходника";
             readinessDetail.ForeColor = Theme.TextMuted;
-            readinessDetail.Font = new Font("Segoe UI", 9f);
+            readinessDetail.Font = new Font(Theme.BodyFont, 9f);
 
             readinessCard.Controls.Add(readinessBadge);
             readinessCard.Controls.Add(readinessTitle);
@@ -394,7 +404,7 @@ namespace StickerStudio
 
             sourceInfo = new Label();
             sourceInfo.ForeColor = Theme.TextMuted;
-            sourceInfo.Font = new Font("Segoe UI", 9f);
+            sourceInfo.Font = new Font(Theme.BodyFont, 9f);
             sourceInfo.Text = "Исходник\nНет данных";
 
             inspectorDefault.Controls.Add(readinessCard);
@@ -425,7 +435,7 @@ namespace StickerStudio
             btnCropApply.Icon = StudioIcon.Check;
             btnCropApply.Text = "Применить обрезку";
             btnCropApply.Accent = true;
-            btnCropApply.Font = new Font("Segoe UI Semibold", 9.5f);
+            btnCropApply.Font = new Font(Theme.BodySemiboldFont, 9.5f);
             btnCropCancel = new StyledButton();
             btnCropCancel.Icon = StudioIcon.Close;
             btnCropCancel.Text = "Отмена";
@@ -478,7 +488,7 @@ namespace StickerStudio
             btnKeyApply.Icon = StudioIcon.Check;
             btnKeyApply.Text = "Применить фон";
             btnKeyApply.Accent = true;
-            btnKeyApply.Font = new Font("Segoe UI Semibold", 9.5f);
+            btnKeyApply.Font = new Font(Theme.BodySemiboldFont, 9.5f);
             btnKeyCancel = new StyledButton();
             btnKeyCancel.Icon = StudioIcon.Close;
             btnKeyCancel.Text = "Отмена";
@@ -548,7 +558,7 @@ namespace StickerStudio
             b.Text = text;
             b.Vertical = true;
             b.Ghost = true;
-            b.Font = new Font("Segoe UI Semibold", 9f);
+            b.Font = new Font(Theme.BodySemiboldFont, 9f);
             b.SetBounds(Theme.S(7), y, Theme.S(70), Theme.S(70));
             b.AccessibleName = text;
             return b;
@@ -692,7 +702,7 @@ namespace StickerStudio
         {
             if (doc == null) return;
             timeLabel.Text = string.Format(CultureInfo.InvariantCulture,
-                "{0:0.0} с   /   {1:0.0}–{2:0.0}   /   {3:0.0} с",
+                "{0:0.0} с   /   {1:0.0}-{2:0.0}   /   {3:0.0} с",
                 timeline.Position, doc.State.CutStart, doc.State.CutEnd, doc.CutDuration);
         }
 
@@ -941,8 +951,8 @@ namespace StickerStudio
 
             EditState snapshot = doc.State.Clone();
 
-            // fps выше лимита Telegram — спрашиваем один раз на экспорте.
-            // «Нет» — на нет и суда нет: оставляем частоту исходника как есть.
+            // fps выше лимита Telegram - спрашиваем один раз на экспорте.
+            // «Нет» - на нет и суда нет: оставляем частоту исходника как есть.
             if (doc.Info.Fps > 31)
             {
                 DialogResult fr = MessageBox.Show(this,

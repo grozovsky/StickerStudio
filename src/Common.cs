@@ -15,6 +15,15 @@ namespace StickerStudio
     {
         public static float UiScale = 1f;
 
+        // Segoe UI Variable has calmer proportions and better Cyrillic rhythm
+        // than the condensed display face used in the first redesign pass.
+        public static readonly string DisplayFont = ResolveFont(
+            "Segoe UI Variable Display Semib", "Segoe UI Semibold");
+        public static readonly string BodyFont = ResolveFont(
+            "Segoe UI Variable Text", "Segoe UI");
+        public static readonly string BodySemiboldFont = ResolveFont(
+            "Segoe UI Variable Text Semibold", "Segoe UI Semibold");
+
         // UX Live 2026: ink-black editing surfaces with the flame-orange brand
         // accent sampled from the bundled UX Live mark. Telegram blue stays
         // semantic and never competes with the product's primary action.
@@ -51,6 +60,17 @@ namespace StickerStudio
         public static int S(int v)
         {
             return (int)Math.Round(v * UiScale);
+        }
+
+        static string ResolveFont(string preferred, string fallback)
+        {
+            try
+            {
+                using (Font font = new Font(preferred, 9f))
+                    return string.Equals(font.Name, preferred, StringComparison.OrdinalIgnoreCase)
+                        ? preferred : fallback;
+            }
+            catch { return fallback; }
         }
     }
 

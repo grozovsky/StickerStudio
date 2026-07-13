@@ -36,7 +36,35 @@ namespace StickerStudio
         static PrivateFontCollection collection;
         static FontFamily iconFamily;
         static IntPtr fontMemory = IntPtr.Zero;
+        static PrivateFontCollection fillCollection;
+        static FontFamily fillFamily;
+        static IntPtr fillFontMemory = IntPtr.Zero;
         static bool attempted;
+
+        static FontFamily LoadEmbeddedFont(string resourceName,
+            out PrivateFontCollection fonts, out IntPtr memory)
+        {
+            fonts = null;
+            memory = IntPtr.Zero;
+            using (Stream stream = Assembly.GetExecutingAssembly()
+                .GetManifestResourceStream(resourceName))
+            {
+                if (stream == null) return null;
+                byte[] data = new byte[stream.Length];
+                int offset = 0;
+                while (offset < data.Length)
+                {
+                    int read = stream.Read(data, offset, data.Length - offset);
+                    if (read <= 0) break;
+                    offset += read;
+                }
+                memory = Marshal.AllocCoTaskMem(data.Length);
+                Marshal.Copy(data, 0, memory, data.Length);
+                fonts = new PrivateFontCollection();
+                fonts.AddMemoryFont(memory, data.Length);
+                return fonts.Families.Length > 0 ? fonts.Families[0] : null;
+            }
+        }
 
         static void EnsureLoaded()
         {
@@ -47,25 +75,10 @@ namespace StickerStudio
                 attempted = true;
                 try
                 {
-                    using (Stream stream = Assembly.GetExecutingAssembly()
-                        .GetManifestResourceStream("phosphor.ttf"))
-                    {
-                        if (stream == null) return;
-                        byte[] data = new byte[stream.Length];
-                        int offset = 0;
-                        while (offset < data.Length)
-                        {
-                            int read = stream.Read(data, offset, data.Length - offset);
-                            if (read <= 0) break;
-                            offset += read;
-                        }
-                        fontMemory = Marshal.AllocCoTaskMem(data.Length);
-                        Marshal.Copy(data, 0, fontMemory, data.Length);
-                        collection = new PrivateFontCollection();
-                        collection.AddMemoryFont(fontMemory, data.Length);
-                        if (collection.Families.Length > 0)
-                            iconFamily = collection.Families[0];
-                    }
+                    iconFamily = LoadEmbeddedFont("phosphor.ttf",
+                        out collection, out fontMemory);
+                    fillFamily = LoadEmbeddedFont("phosphor-fill.ttf",
+                        out fillCollection, out fillFontMemory);
                 }
                 catch { iconFamily = null; }
             }
@@ -99,11 +112,14 @@ namespace StickerStudio
             int codepoint = Codepoint(icon);
             if (codepoint == 0 || iconFamily == null) return;
 
+            bool filled = icon == StudioIcon.Play || icon == StudioIcon.Pause;
+            FontFamily family = filled && fillFamily != null ? fillFamily : iconFamily;
             float logicalSide = Math.Min(bounds.Width, bounds.Height) / Math.Max(.75f, Theme.UiScale);
-            float pointSize = Math.Max(7f, logicalSide * .66f);
+            float pointSize = Math.Max(7f, logicalSide * (filled ? .82f : .66f));
+            bounds.Y += Math.Max(1f, Theme.S(1));
             GraphicsState state = g.Save();
             g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-            using (Font font = new Font(iconFamily, pointSize, FontStyle.Regular, GraphicsUnit.Point))
+            using (Font font = new Font(family, pointSize, FontStyle.Regular, GraphicsUnit.Point))
             using (SolidBrush brush = new SolidBrush(color))
             using (StringFormat format = new StringFormat())
             {
@@ -220,7 +236,7 @@ namespace StickerStudio
             ResizeRedraw = true;
             Cursor = Cursors.Hand;
             ForeColor = Theme.TextMain;
-            Font = new Font("Segoe UI", 9.5f);
+            Font = new Font(Theme.BodyFont, 9.5f);
             TabStop = true;
             AccessibleRole = AccessibleRole.PushButton;
             FlatStyle = FlatStyle.Flat;
@@ -291,7 +307,7 @@ namespace StickerStudio
 
             // content: [swatch][icon][label], centered as a single unit
             int sw = SwatchColor.IsEmpty ? 0 : Theme.S(16);
-            int iconSide = Icon == StudioIcon.None ? 0 : Theme.S(18);
+            int iconSide = Icon == StudioIcon.None ? 0 : Theme.S(RoundFull ? 22 : 18);
             SizeF iconSz = new SizeF(iconSide, iconSide);
             SizeF textSz = string.IsNullOrEmpty(Text) ? SizeF.Empty : g.MeasureString(Text, Font);
             int gap = Theme.S(6);
@@ -299,7 +315,7 @@ namespace StickerStudio
                 + iconSz.Width + (iconSz.Width > 0 && textSz.Width > 0 ? gap : 0)
                 + textSz.Width;
             float x = (Width - total) / 2f;
-            int pressOffset = pressed ? Theme.S(1) : 0;
+            int pressOffset = 0;
 
             if (Vertical && sw == 0)
             {
@@ -407,7 +423,7 @@ namespace StickerStudio
         {
             DoubleBuffered = true;
             ResizeRedraw = true;
-            Font = new Font("Segoe UI Semibold", 9f);
+            Font = new Font(Theme.BodySemiboldFont, 9f);
             ForeColor = Theme.TextSoft;
         }
 
@@ -444,7 +460,7 @@ namespace StickerStudio
     {
         public StudioIcon Icon = StudioIcon.Check;
         public string Caption = "Статус";
-        public string Value = "—";
+        public string Value = "-";
         public Color Tone = Theme.TextMuted;
         public bool Strong;
 
@@ -493,8 +509,8 @@ namespace StickerStudio
             int rightPad = Theme.S(12);
             int available = Math.Max(1, Width - textX - rightPad);
             int captionW = Math.Min(Theme.S(112), Math.Max(Theme.S(72), available * 50 / 100));
-            using (Font captionFont = new Font("Segoe UI Semibold", 9f))
-            using (Font valueFont = new Font("Segoe UI", 9f))
+            using (Font captionFont = new Font(Theme.BodySemiboldFont, 9f))
+            using (Font valueFont = new Font(Theme.BodyFont, 9f))
             {
                 TextRenderer.DrawText(g, Caption, captionFont,
                     new Rectangle(textX, 0, captionW, Height), Theme.TextMain,
