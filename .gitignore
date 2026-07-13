@@ -7,3 +7,4 @@ src/ffmpeg.exe.gz
 # временное
 *.tmp
 Thumbs.db
+.impeccable/
