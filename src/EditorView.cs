@@ -676,10 +676,11 @@ namespace StickerStudio
             }
             else
             {
+                bool backgroundRemoved = doc != null && doc.State.Key.Enabled;
                 keyBadge.SetStatus("Фон",
-                    doc != null && doc.State.Key.Enabled ? "удаляется" : "без обработки",
-                    StudioIcon.Background,
-                    doc != null && doc.State.Key.Enabled ? Theme.Accent2 : Theme.TextMuted);
+                    backgroundRemoved ? "удалён" : "без обработки",
+                    backgroundRemoved ? StudioIcon.Check : StudioIcon.Background,
+                    backgroundRemoved ? Theme.Ok : Theme.TextMuted);
             }
             stageMeta.Text = "Холст  /  " + (doc != null && doc.CropApplied
                 ? "512 × 512" : (doc != null ? doc.Info.Width + " × " + doc.Info.Height : "Нет данных"));

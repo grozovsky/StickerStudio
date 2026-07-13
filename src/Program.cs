@@ -146,6 +146,7 @@ namespace StickerStudio
             dropScreen = new Panel();
             dropScreen.Dock = DockStyle.Fill;
             dropScreen.BackColor = Theme.BackMain;
+            dropScreen.AutoScroll = true;
             dropScreen.Paint += PaintLandingBackground;
 
             studioMark = new UxLiveMark();
@@ -248,28 +249,52 @@ namespace StickerStudio
             int availW = dropScreen.ClientSize.Width;
             int availH = dropScreen.ClientSize.Height;
 
-            int edge = Theme.S(availW < Theme.S(1120) ? 32 : 48);
-            int contentW = Math.Min(Theme.S(1320), Math.Max(Theme.S(760), availW - edge * 2));
+            int edge = Theme.S(availW < Theme.S(1120) ? 28 : 48);
+            int contentW = Math.Min(Theme.S(1320), Math.Max(Theme.S(320), availW - edge * 2));
             int contentX = Math.Max(edge, (availW - contentW) / 2);
-            int headerY = Theme.S(24);
+            int headerY = Theme.S(20);
             studioMark.Location = new Point(contentX, headerY);
             appTitle.Location = new Point(studioMark.Right + Theme.S(13), headerY + Theme.S(2));
             appCaption.Location = new Point(studioMark.Right + Theme.S(14), headerY + Theme.S(30));
-            telegramBadge.Location = new Point(contentX + contentW - telegramBadge.Width, headerY + Theme.S(11));
+            telegramBadge.Visible = contentW >= Theme.S(760);
+            if (telegramBadge.Visible)
+                telegramBadge.Location = new Point(contentX + contentW - telegramBadge.Width,
+                    headerY + Theme.S(11));
 
-            int gap = Theme.S(contentW < Theme.S(1100) ? 36 : 80);
-            int leftW = contentW < Theme.S(1100)
-                ? Math.Max(Theme.S(330), (contentW - gap) * 40 / 100)
-                : Theme.S(500);
-            int rightW = contentW - leftW - gap;
-            int top = Math.Max(Theme.S(150), (availH - Theme.S(680)) / 2);
+            bool stacked = contentW < Theme.S(720);
+            int top = availH < Theme.S(720) ? Theme.S(118) :
+                Math.Max(Theme.S(138), (availH - Theme.S(680)) / 2);
 
-            landingHero.SetBounds(contentX, top, leftW, Theme.S(448));
+            if (stacked)
+            {
+                int heroH = Theme.S(398);
+                landingHero.SetBounds(contentX, top, contentW, heroH);
+                int dropY = landingHero.Bottom + Theme.S(24);
+                dropArea.SetBounds(contentX, dropY, contentW, Theme.S(360));
+                loadLabel.SetBounds(contentX, dropArea.Bottom + Theme.S(12), contentW, Theme.S(38));
+                dropScreen.AutoScrollMinSize = new Size(0, dropArea.Bottom + Theme.S(34));
+            }
+            else
+            {
+                dropScreen.AutoScrollMinSize = Size.Empty;
+                int gap = Theme.S(contentW < Theme.S(1100) ? 32 : 72);
+                int availableColumns = Math.Max(1, contentW - gap);
+                int rightMin = Theme.S(contentW < Theme.S(950) ? 420 : 470);
+                int leftTarget = contentW < Theme.S(1100)
+                    ? availableColumns * 42 / 100
+                    : Theme.S(500);
+                int leftW = Math.Max(Theme.S(300),
+                    Math.Min(leftTarget, availableColumns - rightMin));
+                int rightW = availableColumns - leftW;
+                int availableH = Math.Max(Theme.S(340), availH - top - Theme.S(24));
+                int heroH = Math.Min(Theme.S(448), availableH);
+                int dropH = Math.Min(Theme.S(500), availableH);
 
-            int rightX = contentX + leftW + gap;
-            int dropH = Math.Max(Theme.S(360), Math.Min(Theme.S(500), availH - top - Theme.S(92)));
-            dropArea.SetBounds(rightX, top, rightW, dropH);
-            loadLabel.SetBounds(rightX, dropArea.Bottom + Theme.S(12), dropArea.Width, Theme.S(38));
+                landingHero.SetBounds(contentX, top, leftW, heroH);
+                int rightX = contentX + leftW + gap;
+                dropArea.SetBounds(rightX, top, rightW, dropH);
+                loadLabel.SetBounds(rightX, dropArea.Bottom + Theme.S(12), rightW, Theme.S(38));
+            }
             dropScreen.Invalidate();
         }
 
@@ -454,7 +479,7 @@ namespace StickerStudio
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
             string[] values = { "512 × 512", "До 6 секунд", "До 256 КБ" };
             string[] captions = { "квадратный холст", "точный фрагмент", "лимит Telegram" };
-            using (Font headingFont = new Font(Theme.DisplayFont, 35f))
+            using (Font headingFont = CreateHeadingFont(g))
             using (Font summaryFont = new Font(Theme.BodyFont, 11f))
             using (Font valueFont = new Font(Theme.BodySemiboldFont, 9.5f))
             using (Font captionFont = new Font(Theme.BodyFont, 9.5f))
@@ -467,15 +492,21 @@ namespace StickerStudio
                 g.DrawString(HeadingLine1, headingFont, headingBrush, 0, 0, headingFormat);
                 g.DrawString(HeadingLine2, headingFont, headingBrush, 0, lineH, headingFormat);
 
-                float summaryY = lineH * 2f + Theme.S(30);
+                bool compact = Width < Theme.S(430) || Height < Theme.S(420);
+                float summaryY = lineH * 2f + Theme.S(compact ? 20 : 30);
                 g.DrawString(Summary, summaryFont, summaryBrush,
-                    new RectangleF(0, summaryY, Math.Max(1, Width - Theme.S(8)), Theme.S(76)));
+                    new RectangleF(0, summaryY, Math.Max(1, Width - Theme.S(8)),
+                        Theme.S(compact ? 68 : 76)));
 
-                int benefitsY = Theme.S(284);
-                int rowH = Theme.S(44);
+                int rowH = Theme.S(compact ? 40 : 44);
+                int idealBenefitsY = Theme.S(compact ? 248 : 284);
+                int latestBenefitsY = Height - rowH * values.Length - Theme.S(4);
+                int minBenefitsY = (int)Math.Ceiling(summaryY) + Theme.S(compact ? 82 : 96);
+                int benefitsY = Math.Max(minBenefitsY,
+                    Math.Min(idealBenefitsY, latestBenefitsY));
                 int iconSide = Theme.S(18);
-                int valueX = Theme.S(32);
-                int captionX = Theme.S(150);
+                int valueX = Theme.S(compact ? 28 : 32);
+                int captionX = Theme.S(compact ? 136 : 150);
                 for (int i = 0; i < values.Length; i++)
                 {
                     int y = benefitsY + i * rowH;
@@ -492,6 +523,23 @@ namespace StickerStudio
                         TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
                 }
             }
+        }
+
+        Font CreateHeadingFont(Graphics g)
+        {
+            float size = Width < Theme.S(430) ? 31f : 35f;
+            float maxWidth = Math.Max(1, Width - Theme.S(4));
+            while (size > 24f)
+            {
+                Font candidate = new Font(Theme.DisplayFont, size);
+                float widest = Math.Max(
+                    g.MeasureString(HeadingLine1, candidate).Width,
+                    g.MeasureString(HeadingLine2, candidate).Width);
+                if (widest <= maxWidth) return candidate;
+                candidate.Dispose();
+                size -= 1f;
+            }
+            return new Font(Theme.DisplayFont, 24f);
         }
     }
 

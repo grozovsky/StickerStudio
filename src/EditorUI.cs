@@ -152,69 +152,68 @@ namespace StickerStudio
             if (Doc == null || Doc.Frames.Count == 0) return;
 
             Rectangle r = ImageScreenRect();
-
-            Rectangle shadowRect = r;
-            shadowRect.Inflate(Theme.S(8), Theme.S(8));
-            shadowRect.Offset(0, Theme.S(5));
-            using (GraphicsPath shadow = StyledButton.Rounded(shadowRect, Theme.S(15)))
-            using (SolidBrush sb = new SolidBrush(Color.FromArgb(110, 0, 0, 0)))
-                g.FillPath(sb, shadow);
-
-            // шахматка (видна сквозь прозрачные места)
-            int cell = Theme.S(10);
-            using (SolidBrush b1 = new SolidBrush(Theme.Checker1))
-            using (SolidBrush b2 = new SolidBrush(Theme.Checker2))
-            {
-                g.FillRectangle(b1, r);
-                Region old = g.Clip;
-                g.SetClip(r);
-                for (int yy = r.Y, ry = 0; yy < r.Bottom; yy += cell, ry++)
-                {
-                    for (int xx = r.X + ((ry % 2) * cell); xx < r.Right; xx += cell * 2)
-                        g.FillRectangle(b2, xx, yy, cell, cell);
-                }
-                g.Clip = old;
-            }
-
             Bitmap bmp = CurrentBitmap();
             if (bmp == null) return;
 
-            g.InterpolationMode = InterpolationMode.Bilinear;
-            if (!CropMode && !AppliedCropPreview.IsEmpty)
-                g.DrawImage(bmp, r, AppliedCropPreview, GraphicsUnit.Pixel);
-            else
-                g.DrawImage(bmp, r);
-
-            using (GraphicsPath frame = StyledButton.Rounded(r, Theme.S(9)))
-            using (Pen fp = new Pen(Color.FromArgb(72, Color.White), 1f))
-                g.DrawPath(fp, frame);
-
-            if (CropMode)
+            RectangleF sel = CropMode ? ImageToScreen(CropSel) : RectangleF.Empty;
+            using (GraphicsPath frame = StyledButton.Rounded(r, Theme.S(10)))
             {
-                RectangleF sel = ImageToScreen(CropSel);
-                using (SolidBrush dark = new SolidBrush(Color.FromArgb(150, 10, 10, 14)))
-                {
-                    g.FillRectangle(dark, r.X, r.Y, r.Width, sel.Y - r.Y);
-                    g.FillRectangle(dark, r.X, sel.Bottom, r.Width, r.Bottom - sel.Bottom);
-                    g.FillRectangle(dark, r.X, sel.Y, sel.X - r.X, sel.Height);
-                    g.FillRectangle(dark, sel.Right, sel.Y, r.Right - sel.Right, sel.Height);
-                }
-                using (Pen p = new Pen(Theme.Accent, 2f))
-                    g.DrawRectangle(p, sel.X, sel.Y, sel.Width, sel.Height);
+                // Изображение, прозрачная шахматка и crop-overlay используют один
+                // контур. Обводка больше не маскирует квадратные углы видео.
+                GraphicsState imageState = g.Save();
+                g.SetClip(frame, CombineMode.Intersect);
 
-                using (Pen guide = new Pen(Color.FromArgb(115, Color.White), 1f))
+                int cell = Theme.S(10);
+                using (SolidBrush b1 = new SolidBrush(Theme.Checker1))
+                using (SolidBrush b2 = new SolidBrush(Theme.Checker2))
                 {
-                    guide.DashStyle = DashStyle.Dash;
-                    g.DrawLine(guide, sel.Left + sel.Width / 3f, sel.Top,
-                        sel.Left + sel.Width / 3f, sel.Bottom);
-                    g.DrawLine(guide, sel.Left + sel.Width * 2f / 3f, sel.Top,
-                        sel.Left + sel.Width * 2f / 3f, sel.Bottom);
-                    g.DrawLine(guide, sel.Left, sel.Top + sel.Height / 3f,
-                        sel.Right, sel.Top + sel.Height / 3f);
-                    g.DrawLine(guide, sel.Left, sel.Top + sel.Height * 2f / 3f,
-                        sel.Right, sel.Top + sel.Height * 2f / 3f);
+                    g.FillRectangle(b1, r);
+                    for (int yy = r.Y, ry = 0; yy < r.Bottom; yy += cell, ry++)
+                    {
+                        for (int xx = r.X + ((ry % 2) * cell); xx < r.Right; xx += cell * 2)
+                            g.FillRectangle(b2, xx, yy, cell, cell);
+                    }
                 }
 
+                g.InterpolationMode = InterpolationMode.Bilinear;
+                if (!CropMode && !AppliedCropPreview.IsEmpty)
+                    g.DrawImage(bmp, r, AppliedCropPreview, GraphicsUnit.Pixel);
+                else
+                    g.DrawImage(bmp, r);
+
+                if (CropMode)
+                {
+                    using (SolidBrush dark = new SolidBrush(Color.FromArgb(150, 10, 10, 14)))
+                    {
+                        g.FillRectangle(dark, r.X, r.Y, r.Width, sel.Y - r.Y);
+                        g.FillRectangle(dark, r.X, sel.Bottom, r.Width, r.Bottom - sel.Bottom);
+                        g.FillRectangle(dark, r.X, sel.Y, sel.X - r.X, sel.Height);
+                        g.FillRectangle(dark, sel.Right, sel.Y, r.Right - sel.Right, sel.Height);
+                    }
+                    using (Pen p = new Pen(Theme.Accent, 2f))
+                        g.DrawRectangle(p, sel.X, sel.Y, sel.Width, sel.Height);
+
+                    using (Pen guide = new Pen(Color.FromArgb(115, Color.White), 1f))
+                    {
+                        guide.DashStyle = DashStyle.Dash;
+                        g.DrawLine(guide, sel.Left + sel.Width / 3f, sel.Top,
+                            sel.Left + sel.Width / 3f, sel.Bottom);
+                        g.DrawLine(guide, sel.Left + sel.Width * 2f / 3f, sel.Top,
+                            sel.Left + sel.Width * 2f / 3f, sel.Bottom);
+                        g.DrawLine(guide, sel.Left, sel.Top + sel.Height / 3f,
+                            sel.Right, sel.Top + sel.Height / 3f);
+                        g.DrawLine(guide, sel.Left, sel.Top + sel.Height * 2f / 3f,
+                            sel.Right, sel.Top + sel.Height * 2f / 3f);
+                    }
+                }
+
+                g.Restore(imageState);
+                using (Pen fp = new Pen(Color.FromArgb(72, Color.White), 1f))
+                    g.DrawPath(fp, frame);
+
+                if (!CropMode) return;
+
+                // Ручки остаются поверх клипа, чтобы их не обрезало у края кадра.
                 int hs = Theme.S(11);
                 using (SolidBrush hb = new SolidBrush(Theme.Accent))
                 using (Pen hp = new Pen(Color.White, 1.4f))
