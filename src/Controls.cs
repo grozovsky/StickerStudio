@@ -514,7 +514,7 @@ namespace StickerStudio
                 g.DrawPath(pen, p);
 
             int tile = Theme.S(28);
-            Rectangle tileRect = new Rectangle(Theme.S(10), (Height - tile) / 2, tile, tile);
+            Rectangle tileRect = new Rectangle(Theme.S(8), (Height - tile) / 2, tile, tile);
             using (GraphicsPath p = StyledButton.Rounded(tileRect, Theme.S(8)))
             using (SolidBrush b = new SolidBrush(Color.FromArgb(42, Tone)))
                 g.FillPath(b, p);
@@ -522,15 +522,29 @@ namespace StickerStudio
                 new RectangleF(tileRect.X + Theme.S(6), tileRect.Y + Theme.S(6),
                     tileRect.Width - Theme.S(12), tileRect.Height - Theme.S(12)), Tone);
 
-            int textX = tileRect.Right + Theme.S(10);
-            int rightPad = Theme.S(12);
+            int textX = tileRect.Right + Theme.S(8);
+            int rightPad = Theme.S(8);
             int available = Math.Max(1, Width - textX - rightPad);
-            int captionW = Math.Min(Theme.S(112), Math.Max(Theme.S(72), available * 50 / 100));
             using (Font captionFont = new Font(Theme.BodySemiboldFont, 9f))
             using (Font valueFont = new Font(Theme.BodyFont, 9f))
-            using (StringFormat captionFormat = new StringFormat())
-            using (StringFormat valueFormat = new StringFormat())
+            using (StringFormat measureFormat = new StringFormat(StringFormat.GenericTypographic))
+            using (StringFormat captionFormat = new StringFormat(StringFormat.GenericTypographic))
+            using (StringFormat valueFormat = new StringFormat(StringFormat.GenericTypographic))
             {
+                measureFormat.FormatFlags = StringFormatFlags.NoWrap;
+                int gap = Theme.S(6);
+                int captionDesired = (int)Math.Ceiling(g.MeasureString(
+                    Caption, captionFont, PointF.Empty, measureFormat).Width) + Theme.S(4);
+                int valueDesired = (int)Math.Ceiling(g.MeasureString(
+                    Value, valueFont, PointF.Empty, measureFormat).Width) + Theme.S(4);
+                // Значение статуса несёт результат проверки, поэтому фиксированная
+                // половина строки ему не подходит. Подпись занимает ровно свою
+                // измеренную ширину, а остаток получает значение.
+                int captionW = Math.Min(captionDesired,
+                    Math.Max(Theme.S(48), available - gap - valueDesired));
+                int valueX = textX + captionW + gap;
+                int valueW = Math.Max(1, available - captionW - gap);
+
                 captionFormat.Alignment = StringAlignment.Near;
                 captionFormat.LineAlignment = StringAlignment.Center;
                 captionFormat.Trimming = StringTrimming.EllipsisCharacter;
@@ -545,8 +559,7 @@ namespace StickerStudio
                 using (SolidBrush valueBrush = new SolidBrush(
                     Strong ? Theme.TextMain : Theme.TextSoft))
                     g.DrawString(Value, valueFont, valueBrush,
-                        new RectangleF(textX + captionW, 0,
-                            Math.Max(1, available - captionW), Height), valueFormat);
+                        new RectangleF(valueX, 0, valueW, Height), valueFormat);
             }
         }
     }
