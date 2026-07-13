@@ -21,11 +21,12 @@ namespace StickerStudio
         StyledButton btnKeyApply, btnKeyCancel, btnCropApply, btnCropCancel, btnPick;
         Panel toolbar, content, toolRail, mainColumn, stageHost, bottomBar;
         Panel inspector, inspectorDefault, keyPanel, cropPanel;
-        SurfacePanel readinessCard;
+        SurfacePanel readinessCard, sourceChip;
         UxLiveMark studioMark;
-        PillLabel readinessBadge, cropBadge, keyBadge;
+        StatusRow readinessBadge, cropBadge, keyBadge;
         Label timeLabel, statusLabel, lbGain, lbShrink, cropHint;
-        Label fileLabel, stageTitle, stageMeta, inspectorTitle, inspectorCaption;
+        Label fileLabel, fileMetaLabel, appLabel, appMetaLabel;
+        Label stageTitle, stageMeta, inspectorTitle, inspectorCaption;
         Label readinessTitle, readinessDetail, sourceInfo, timelineTitle;
         NiceSlider slGain, slShrink;
         ToolTip tips;
@@ -52,7 +53,7 @@ namespace StickerStudio
             // ---------- top command bar ----------
             toolbar = new Panel();
             toolbar.Dock = DockStyle.None;
-            toolbar.Height = Theme.S(68);
+            toolbar.Height = Theme.S(76);
             toolbar.BackColor = Theme.BackMain;
             toolbar.Paint += delegate(object sender, PaintEventArgs e)
             {
@@ -61,31 +62,45 @@ namespace StickerStudio
             };
 
             studioMark = new UxLiveMark();
-            studioMark.SetBounds(Theme.S(18), Theme.S(13), Theme.S(42), Theme.S(42));
+            studioMark.SetBounds(Theme.S(18), Theme.S(17), Theme.S(42), Theme.S(42));
             toolbar.Controls.Add(studioMark);
 
-            Label app = new Label();
-            app.AutoSize = true;
-            app.Text = "Sticker Studio";
-            app.ForeColor = Theme.TextMain;
-            app.Font = new Font("Segoe UI Semibold", 12.5f);
-            app.Location = new Point(Theme.S(71), Theme.S(12));
-            toolbar.Controls.Add(app);
+            appLabel = new Label();
+            appLabel.AutoSize = true;
+            appLabel.Text = "uxlive";
+            appLabel.ForeColor = Theme.TextMain;
+            appLabel.Font = new Font("Bahnschrift SemiBold", 13f);
+            appLabel.Location = new Point(Theme.S(71), Theme.S(15));
+            toolbar.Controls.Add(appLabel);
 
-            Label appMeta = new Label();
-            appMeta.AutoSize = true;
-            appMeta.Text = "UX Live  /  видеостикеры Telegram";
-            appMeta.ForeColor = Theme.TextMuted;
-            appMeta.Font = new Font("Segoe UI", 9f);
-            appMeta.Location = new Point(Theme.S(72), Theme.S(37));
-            toolbar.Controls.Add(appMeta);
+            appMetaLabel = new Label();
+            appMetaLabel.AutoSize = true;
+            appMetaLabel.Text = "Sticker Studio  /  Telegram";
+            appMetaLabel.ForeColor = Theme.TextMuted;
+            appMetaLabel.Font = new Font("Segoe UI", 8.75f);
+            appMetaLabel.Location = new Point(Theme.S(72), Theme.S(41));
+            toolbar.Controls.Add(appMetaLabel);
+
+            sourceChip = new SurfacePanel();
+            sourceChip.FillColor = Theme.Surface;
+            sourceChip.BackColor = Theme.Surface;
+            sourceChip.StrokeColor = Theme.BorderIdle;
+            sourceChip.Radius = 10;
+            toolbar.Controls.Add(sourceChip);
 
             fileLabel = new Label();
-            fileLabel.ForeColor = Theme.TextMuted;
+            fileLabel.ForeColor = Theme.TextMain;
             fileLabel.TextAlign = ContentAlignment.MiddleLeft;
-            fileLabel.Font = new Font("Segoe UI", 9f);
+            fileLabel.Font = new Font("Segoe UI Semibold", 9f);
             fileLabel.AutoEllipsis = true;
-            toolbar.Controls.Add(fileLabel);
+            sourceChip.Controls.Add(fileLabel);
+
+            fileMetaLabel = new Label();
+            fileMetaLabel.ForeColor = Theme.TextMuted;
+            fileMetaLabel.TextAlign = ContentAlignment.MiddleLeft;
+            fileMetaLabel.Font = new Font("Segoe UI", 8.25f);
+            fileMetaLabel.AutoEllipsis = true;
+            sourceChip.Controls.Add(fileMetaLabel);
 
             btnBack = MakeBtn(StudioIcon.Back, "Новое видео", 0, Theme.S(132));
             btnUndo = MakeBtn(StudioIcon.Undo, "Отменить", 0, Theme.S(112));
@@ -196,7 +211,7 @@ namespace StickerStudio
             // ---------- readiness / tool inspector ----------
             inspector = new Panel();
             inspector.Dock = DockStyle.Right;
-            inspector.Width = Theme.S(300);
+            inspector.Width = Theme.S(340);
             inspector.BackColor = Theme.BackPanel;
             inspector.Paint += delegate(object sender, PaintEventArgs e)
             {
@@ -207,7 +222,7 @@ namespace StickerStudio
             inspectorTitle = new Label();
             inspectorTitle.Text = "Готовность";
             inspectorTitle.ForeColor = Theme.TextMain;
-            inspectorTitle.Font = new Font("Segoe UI Semibold", 13f);
+            inspectorTitle.Font = new Font("Bahnschrift SemiBold", 14f);
             inspector.Controls.Add(inspectorTitle);
 
             inspectorCaption = new Label();
@@ -260,9 +275,11 @@ namespace StickerStudio
 
         void LayoutShell()
         {
-            toolbar.SetBounds(0, 0, ClientSize.Width, Theme.S(68));
+            toolbar.SetBounds(0, 0, ClientSize.Width, Theme.S(76));
             content.SetBounds(0, toolbar.Bottom, ClientSize.Width,
                 Math.Max(0, ClientSize.Height - toolbar.Height));
+            if (inspector != null)
+                inspector.Width = Theme.S(ClientSize.Width >= Theme.S(1280) ? 340 : 320);
         }
 
         void LayoutBottomBar()
@@ -280,10 +297,15 @@ namespace StickerStudio
         void LayoutToolbar()
         {
             int W = toolbar.ClientSize.Width;
-            btnBack.SetBounds(W - Theme.S(276), Theme.S(18), Theme.S(132), Theme.S(38));
-            btnUndo.SetBounds(W - Theme.S(132), Theme.S(18), Theme.S(112), Theme.S(38));
-            fileLabel.SetBounds(Theme.S(230), Theme.S(20),
-                Math.Max(Theme.S(120), W - Theme.S(530)), Theme.S(26));
+            btnBack.SetBounds(W - Theme.S(292), Theme.S(17), Theme.S(140), Theme.S(42));
+            btnUndo.SetBounds(W - Theme.S(140), Theme.S(17), Theme.S(120), Theme.S(42));
+            int sourceX = Theme.S(266);
+            int sourceW = Math.Max(Theme.S(180), btnBack.Left - Theme.S(16) - sourceX);
+            sourceChip.SetBounds(sourceX, Theme.S(15), sourceW, Theme.S(46));
+            fileLabel.SetBounds(Theme.S(12), Theme.S(4),
+                Math.Max(Theme.S(80), sourceChip.Width - Theme.S(24)), Theme.S(20));
+            fileMetaLabel.SetBounds(Theme.S(12), Theme.S(23),
+                Math.Max(Theme.S(80), sourceChip.Width - Theme.S(24)), Theme.S(17));
         }
 
         void LayoutStage()
@@ -320,16 +342,16 @@ namespace StickerStudio
             statusLabel.SetBounds(pad, statusY, W - pad * 2, Theme.S(46));
             btnExport.SetBounds(pad, exportY, W - pad * 2, exportH);
 
-            readinessCard.SetBounds(pad, Theme.S(4), W - pad * 2, Theme.S(116));
+            readinessCard.SetBounds(pad, Theme.S(4), W - pad * 2, Theme.S(132));
             readinessBadge.SetBounds(Theme.S(16), Theme.S(14),
-                readinessCard.Width - Theme.S(32), Theme.S(26));
-            readinessTitle.SetBounds(Theme.S(16), Theme.S(48),
+                readinessCard.Width - Theme.S(32), Theme.S(42));
+            readinessTitle.SetBounds(Theme.S(16), Theme.S(66),
                 readinessCard.Width - Theme.S(32), Theme.S(25));
-            readinessDetail.SetBounds(Theme.S(16), Theme.S(74),
-                readinessCard.Width - Theme.S(32), Theme.S(32));
-            cropBadge.SetBounds(pad, Theme.S(138), W - pad * 2, Theme.S(30));
-            keyBadge.SetBounds(pad, Theme.S(176), W - pad * 2, Theme.S(30));
-            sourceInfo.SetBounds(pad, Theme.S(224), W - pad * 2, Theme.S(76));
+            readinessDetail.SetBounds(Theme.S(16), Theme.S(92),
+                readinessCard.Width - Theme.S(32), Theme.S(30));
+            cropBadge.SetBounds(pad, Theme.S(152), W - pad * 2, Theme.S(46));
+            keyBadge.SetBounds(pad, Theme.S(208), W - pad * 2, Theme.S(46));
+            sourceInfo.SetBounds(pad, Theme.S(276), W - pad * 2, Theme.S(88));
 
             LayoutCropPanel(W, cropPanel.Height);
             LayoutKeyPanel(W, keyPanel.Height);
@@ -346,11 +368,9 @@ namespace StickerStudio
             readinessCard.StrokeColor = Theme.BorderIdle;
             readinessCard.Radius = 12;
 
-            readinessBadge = new PillLabel();
-            readinessBadge.Text = "Проверка";
-            readinessBadge.Tone = Theme.Accent;
-            readinessBadge.Dot = false;
+            readinessBadge = new StatusRow();
             readinessBadge.Strong = true;
+            readinessBadge.SetStatus("Статус", "проверка", StudioIcon.Check, Theme.Accent);
 
             readinessTitle = new Label();
             readinessTitle.Text = "Подготовка проекта";
@@ -366,15 +386,11 @@ namespace StickerStudio
             readinessCard.Controls.Add(readinessTitle);
             readinessCard.Controls.Add(readinessDetail);
 
-            cropBadge = new PillLabel();
-            cropBadge.Text = "Квадрат 1:1";
-            cropBadge.Dot = false;
-            cropBadge.Tone = Theme.TextMuted;
+            cropBadge = new StatusRow();
+            cropBadge.SetStatus("Квадрат 1:1", "проверка", StudioIcon.Crop, Theme.TextMuted);
 
-            keyBadge = new PillLabel();
-            keyBadge.Text = "Фон";
-            keyBadge.Dot = false;
-            keyBadge.Tone = Theme.TextMuted;
+            keyBadge = new StatusRow();
+            keyBadge.SetStatus("Фон", "без обработки", StudioIcon.Background, Theme.TextMuted);
 
             sourceInfo = new Label();
             sourceInfo.ForeColor = Theme.TextMuted;
@@ -573,10 +589,12 @@ namespace StickerStudio
             busy = false;
             showingResult = false;
 
-            fileLabel.Text = Path.GetFileName(d.SourcePath) + "  /  " +
-                d.Info.Width + " × " + d.Info.Height;
+            fileLabel.Text = Path.GetFileName(d.SourcePath);
+            fileMetaLabel.Text = d.Info.Width + " × " + d.Info.Height + "  /  " +
+                d.Info.Duration.ToString("0.0") + " с  /  " +
+                (d.Info.Fps > 0 ? d.Info.Fps.ToString("0.##") + " fps" : "fps: нет данных");
             stageMeta.Text = "Холст  /  " + (d.CropApplied ? "512 × 512" : d.Info.Width + " × " + d.Info.Height);
-            sourceInfo.Text = "Исходник\n" + Path.GetFileName(d.SourcePath) + "\n" +
+            sourceInfo.Text = "Исходник\n" +
                 d.Info.Width + " × " + d.Info.Height + "  /  " +
                 d.Info.Duration.ToString("0.0") + " с  /  " +
                 (d.Info.Fps > 0 ? d.Info.Fps.ToString("0.##") + " fps" : "fps: нет данных");
@@ -626,33 +644,33 @@ namespace StickerStudio
             btnCrop.SetChecked(doc != null && doc.CropApplied);
             btnKey.SetChecked(doc != null && doc.State.Key.Enabled);
 
-            readinessBadge.Text = blocked ? "Нужна обрезка" : "Готово к экспорту";
-            readinessBadge.Tone = blocked ? Theme.Warn : Theme.Ok;
-            readinessBadge.Invalidate();
+            readinessBadge.SetStatus("Статус",
+                blocked ? "нужна обрезка" : "можно экспортировать",
+                blocked ? StudioIcon.Lock : StudioIcon.Check,
+                blocked ? Theme.Warn : Theme.Ok);
             readinessTitle.Text = blocked ? "Остался один шаг" : "Все проверки пройдены";
             readinessDetail.Text = blocked
                 ? "Выберите квадрат 1:1 для стикера."
                 : "WebM будет собран под лимит 256 КБ.";
 
-            cropBadge.Text = doc != null && doc.CropApplied
-                ? "Квадрат 1:1  /  выбран"
-                : (blocked ? "Квадрат 1:1  /  обязателен" : "Квадрат 1:1  /  не требуется");
-            cropBadge.Tone = doc != null && doc.CropApplied ? Theme.Ok : (blocked ? Theme.Warn : Theme.TextMuted);
-            cropBadge.Invalidate();
+            cropBadge.SetStatus("Квадрат 1:1",
+                doc != null && doc.CropApplied
+                    ? "выбран"
+                    : (blocked ? "обязателен" : "не требуется"),
+                StudioIcon.Crop,
+                doc != null && doc.CropApplied ? Theme.Ok : (blocked ? Theme.Warn : Theme.TextMuted));
 
             if (doc != null && doc.SourceHasAlpha)
             {
-                keyBadge.Text = "Альфа-канал  /  сохранится";
-                keyBadge.Tone = Theme.Ok;
+                keyBadge.SetStatus("Альфа-канал", "сохранится", StudioIcon.Check, Theme.Ok);
             }
             else
             {
-                keyBadge.Text = doc != null && doc.State.Key.Enabled
-                    ? "Фон  /  удаляется"
-                    : "Фон  /  без обработки";
-                keyBadge.Tone = doc != null && doc.State.Key.Enabled ? Theme.Accent2 : Theme.TextMuted;
+                keyBadge.SetStatus("Фон",
+                    doc != null && doc.State.Key.Enabled ? "удаляется" : "без обработки",
+                    StudioIcon.Background,
+                    doc != null && doc.State.Key.Enabled ? Theme.Accent2 : Theme.TextMuted);
             }
-            keyBadge.Invalidate();
             stageMeta.Text = "Холст  /  " + (doc != null && doc.CropApplied
                 ? "512 × 512" : (doc != null ? doc.Info.Width + " × " + doc.Info.Height : "Нет данных"));
 

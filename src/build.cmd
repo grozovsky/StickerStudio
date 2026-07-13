@@ -12,6 +12,7 @@ if not exist "%CSC%" (
 "%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 ^
     /win32manifest:app.manifest /win32icon:app.ico ^
     /resource:uxlive-logo.png,uxlive.png ^
+    /resource:phosphor-icons.ttf,phosphor.ttf ^
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
     /out:..\StickerStudio.exe Program.cs Common.cs Controls.cs ChromaKey.cs VideoDoc.cs ExportPipeline.cs EditorUI.cs EditorView.cs
 

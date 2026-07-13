@@ -2,8 +2,10 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Drawing.Text;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace StickerStudio
@@ -22,12 +24,101 @@ namespace StickerStudio
         Check,
         Close,
         VideoUpload,
+        FileVideo,
         Eyedropper
     }
 
-    // A small native vector family: one stroke, one optical grid, no font-glyph
-    // dependency.  It stays sharp at fractional Windows DPI scales.
+    // Phosphor Icons Regular 2.1.2, embedded with the application. Using the
+    // original icon font gives every action one optical grid and stroke weight.
     static class IconPainter
+    {
+        static readonly object Sync = new object();
+        static PrivateFontCollection collection;
+        static FontFamily iconFamily;
+        static IntPtr fontMemory = IntPtr.Zero;
+        static bool attempted;
+
+        static void EnsureLoaded()
+        {
+            if (attempted) return;
+            lock (Sync)
+            {
+                if (attempted) return;
+                attempted = true;
+                try
+                {
+                    using (Stream stream = Assembly.GetExecutingAssembly()
+                        .GetManifestResourceStream("phosphor.ttf"))
+                    {
+                        if (stream == null) return;
+                        byte[] data = new byte[stream.Length];
+                        int offset = 0;
+                        while (offset < data.Length)
+                        {
+                            int read = stream.Read(data, offset, data.Length - offset);
+                            if (read <= 0) break;
+                            offset += read;
+                        }
+                        fontMemory = Marshal.AllocCoTaskMem(data.Length);
+                        Marshal.Copy(data, 0, fontMemory, data.Length);
+                        collection = new PrivateFontCollection();
+                        collection.AddMemoryFont(fontMemory, data.Length);
+                        if (collection.Families.Length > 0)
+                            iconFamily = collection.Families[0];
+                    }
+                }
+                catch { iconFamily = null; }
+            }
+        }
+
+        static int Codepoint(StudioIcon icon)
+        {
+            switch (icon)
+            {
+                case StudioIcon.Back: return 0xE058;
+                case StudioIcon.Undo: return 0xE038;
+                case StudioIcon.Crop: return 0xE1D4;
+                case StudioIcon.Background: return 0xE6B6;
+                case StudioIcon.Play: return 0xE3D0;
+                case StudioIcon.Pause: return 0xE39E;
+                case StudioIcon.Export: return 0xEAF0;
+                case StudioIcon.Lock: return 0xE2FA;
+                case StudioIcon.Check: return 0xE182;
+                case StudioIcon.Close: return 0xE4F6;
+                case StudioIcon.VideoUpload: return 0xE4C0;
+                case StudioIcon.FileVideo: return 0xEA22;
+                case StudioIcon.Eyedropper: return 0xE568;
+                default: return 0;
+            }
+        }
+
+        public static void Draw(Graphics g, StudioIcon icon, RectangleF bounds, Color color)
+        {
+            if (icon == StudioIcon.None || bounds.Width <= 0 || bounds.Height <= 0) return;
+            EnsureLoaded();
+            int codepoint = Codepoint(icon);
+            if (codepoint == 0 || iconFamily == null) return;
+
+            float logicalSide = Math.Min(bounds.Width, bounds.Height) / Math.Max(.75f, Theme.UiScale);
+            float pointSize = Math.Max(7f, logicalSide * .66f);
+            GraphicsState state = g.Save();
+            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            using (Font font = new Font(iconFamily, pointSize, FontStyle.Regular, GraphicsUnit.Point))
+            using (SolidBrush brush = new SolidBrush(color))
+            using (StringFormat format = new StringFormat())
+            {
+                format.Alignment = StringAlignment.Center;
+                format.LineAlignment = StringAlignment.Center;
+                format.FormatFlags = StringFormatFlags.NoWrap;
+                g.DrawString(char.ConvertFromUtf32(codepoint), font, brush, bounds, format);
+            }
+            g.Restore(state);
+        }
+    }
+
+    // Retained only as a fallback reference for older builds; production controls
+    // use the official Phosphor renderer above.
+    static class LegacyIconPainter
     {
         public static void Draw(Graphics g, StudioIcon icon, RectangleF bounds, Color color)
         {
@@ -311,7 +402,6 @@ namespace StickerStudio
     {
         public Color Tone = Theme.Accent;
         public bool Dot;
-        public bool Strong;
 
         public PillLabel()
         {
@@ -327,7 +417,7 @@ namespace StickerStudio
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Parent != null ? Parent.BackColor : Theme.BackMain);
             Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
-            Color fill = Strong ? Color.FromArgb(56, Tone) : Color.FromArgb(26, Tone);
+            Color fill = Color.FromArgb(26, Tone);
             using (GraphicsPath p = StyledButton.Rounded(r, Theme.S(9)))
             using (SolidBrush b = new SolidBrush(fill))
                 g.FillPath(b, p);
@@ -345,8 +435,78 @@ namespace StickerStudio
                     g.FillEllipse(db, x, (Height - dotW) / 2f, dotW, dotW);
                 x += dotW + Theme.S(8);
             }
-            using (SolidBrush tb = new SolidBrush(Strong ? Color.White : ForeColor))
+            using (SolidBrush tb = new SolidBrush(ForeColor))
                 g.DrawString(Text, Font, tb, x, (Height - ts.Height) / 2f);
+        }
+    }
+
+    class StatusRow : Control
+    {
+        public StudioIcon Icon = StudioIcon.Check;
+        public string Caption = "Статус";
+        public string Value = "—";
+        public Color Tone = Theme.TextMuted;
+        public bool Strong;
+
+        public StatusRow()
+        {
+            DoubleBuffered = true;
+            ResizeRedraw = true;
+            BackColor = Theme.BackPanel;
+            AccessibleRole = AccessibleRole.StaticText;
+        }
+
+        public void SetStatus(string caption, string value, StudioIcon icon, Color tone)
+        {
+            Caption = caption;
+            Value = value;
+            Icon = icon;
+            Tone = tone;
+            AccessibleName = caption + ": " + value;
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Parent != null ? Parent.BackColor : Theme.BackPanel);
+            Rectangle r = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            Color fill = Strong ? Color.FromArgb(34, Tone) : Theme.Surface;
+            using (GraphicsPath p = StyledButton.Rounded(r, Theme.S(10)))
+            using (SolidBrush b = new SolidBrush(fill))
+                g.FillPath(b, p);
+            using (GraphicsPath p = StyledButton.Rounded(r, Theme.S(10)))
+            using (Pen pen = new Pen(Strong ? Color.FromArgb(74, Tone) : Theme.BorderIdle, 1f))
+                g.DrawPath(pen, p);
+
+            int tile = Theme.S(28);
+            Rectangle tileRect = new Rectangle(Theme.S(10), (Height - tile) / 2, tile, tile);
+            using (GraphicsPath p = StyledButton.Rounded(tileRect, Theme.S(8)))
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(42, Tone)))
+                g.FillPath(b, p);
+            IconPainter.Draw(g, Icon,
+                new RectangleF(tileRect.X + Theme.S(6), tileRect.Y + Theme.S(6),
+                    tileRect.Width - Theme.S(12), tileRect.Height - Theme.S(12)), Tone);
+
+            int textX = tileRect.Right + Theme.S(10);
+            int rightPad = Theme.S(12);
+            int available = Math.Max(1, Width - textX - rightPad);
+            int captionW = Math.Min(Theme.S(112), Math.Max(Theme.S(72), available * 50 / 100));
+            using (Font captionFont = new Font("Segoe UI Semibold", 9f))
+            using (Font valueFont = new Font("Segoe UI", 9f))
+            {
+                TextRenderer.DrawText(g, Caption, captionFont,
+                    new Rectangle(textX, 0, captionW, Height), Theme.TextMain,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, Value, valueFont,
+                    new Rectangle(textX + captionW, 0,
+                        Math.Max(1, available - captionW), Height),
+                    Strong ? Theme.TextMain : Theme.TextSoft,
+                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            }
         }
     }
 

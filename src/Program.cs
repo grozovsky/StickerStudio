@@ -100,8 +100,9 @@ namespace StickerStudio
     {
         Panel dropScreen;
         DropArea dropArea;
-        Label loadLabel, landingTitle, landingSubtitle, landingDetails, appTitle, appCaption;
-        PillLabel telegramBadge;
+        Label loadLabel, landingTitle, landingSubtitle, appTitle, appCaption;
+        Label telegramBadge;
+        LandingBenefits landingDetails;
         UxLiveMark studioMark;
         EditorView editor;
         string pendingFile;
@@ -122,10 +123,12 @@ namespace StickerStudio
             AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterScreen;
             Rectangle work = Screen.FromPoint(Cursor.Position).WorkingArea;
-            MinimumSize = new Size(Math.Min(860, work.Width), Math.Min(600, work.Height));
+            MinimumSize = new Size(Math.Min(1024, work.Width), Math.Min(700, work.Height));
             ClientSize = new Size(
-                Math.Max(520, Math.Min(1080, work.Width - 48)),
-                Math.Max(440, Math.Min(720, work.Height - 56)));
+                Math.Max(760, Math.Min(1440, work.Width - 64)),
+                Math.Max(560, Math.Min(900, work.Height - 64)));
+            MaximizedBounds = work;
+            WindowState = FormWindowState.Maximized;
             AllowDrop = true;
             try
             {
@@ -146,7 +149,7 @@ namespace StickerStudio
             dropScreen.Paint += PaintLandingBackground;
 
             studioMark = new UxLiveMark();
-            studioMark.Size = new Size(Theme.S(48), Theme.S(48));
+            studioMark.Size = new Size(Theme.S(52), Theme.S(52));
             studioMark.Cursor = Cursors.Hand;
             studioMark.AccessibleRole = AccessibleRole.Link;
             studioMark.AccessibleName = "Открыть UX Live в Telegram";
@@ -156,37 +159,34 @@ namespace StickerStudio
             appTitle.AutoSize = true;
             appTitle.Text = "Sticker Studio";
             appTitle.ForeColor = Theme.TextMain;
-            appTitle.Font = new Font("Segoe UI Semibold", 13.5f);
+            appTitle.Font = new Font("Bahnschrift SemiBold", 14f);
 
             appCaption = new Label();
             appCaption.AutoSize = true;
-            appCaption.Text = "UX Live  /  видеостикеры Telegram";
+            appCaption.Text = "uxlive  /  видеостикеры Telegram";
             appCaption.ForeColor = Theme.TextMuted;
             appCaption.Font = new Font("Segoe UI", 9f);
 
-            telegramBadge = new PillLabel();
-            telegramBadge.Text = "WebM для Telegram";
-            telegramBadge.Tone = Theme.Telegram;
-            telegramBadge.Dot = false;
-            telegramBadge.Size = new Size(Theme.S(150), Theme.S(30));
+            telegramBadge = new Label();
+            telegramBadge.Text = "Telegram WebM   •   обработка локально";
+            telegramBadge.TextAlign = ContentAlignment.MiddleRight;
+            telegramBadge.ForeColor = Theme.TextSoft;
+            telegramBadge.Font = new Font("Segoe UI Semibold", 9f);
+            telegramBadge.Size = new Size(Theme.S(250), Theme.S(30));
 
             landingTitle = new Label();
-            landingTitle.Text = "Стикер\r\nиз видео";
+            landingTitle.Text = "Соберите стикер\r\nиз любого видео";
             landingTitle.TextAlign = ContentAlignment.MiddleLeft;
             landingTitle.ForeColor = Theme.TextMain;
-            landingTitle.Font = new Font("Segoe UI Semibold", 28f);
+            landingTitle.Font = new Font("Bahnschrift SemiBold", 36f);
 
             landingSubtitle = new Label();
-            landingSubtitle.Text = "Обрежьте кадр, удалите фон и экспортируйте стикер для Telegram. Без облака и лишних шагов.";
+            landingSubtitle.Text = "Точная обрезка, чистый фон и готовый WebM для Telegram — без загрузки в облако и лишних шагов.";
             landingSubtitle.TextAlign = ContentAlignment.TopLeft;
             landingSubtitle.ForeColor = Theme.TextMuted;
-            landingSubtitle.Font = new Font("Segoe UI", 10.5f);
+            landingSubtitle.Font = new Font("Segoe UI", 11f);
 
-            landingDetails = new Label();
-            landingDetails.Text = "512 × 512     квадратный холст\r\nДо 3 секунд   точная обрезка\r\nДо 256 КБ     готово для Telegram";
-            landingDetails.TextAlign = ContentAlignment.TopLeft;
-            landingDetails.ForeColor = Theme.TextSoft;
-            landingDetails.Font = new Font("Segoe UI", 9.5f);
+            landingDetails = new LandingBenefits();
 
             dropArea = new DropArea();
             dropArea.Click += delegate { PickFile(); };
@@ -194,8 +194,8 @@ namespace StickerStudio
             loadLabel = new Label();
             loadLabel.TextAlign = ContentAlignment.MiddleCenter;
             loadLabel.ForeColor = Theme.TextMuted;
-            loadLabel.Font = new Font("Segoe UI", 9f);
-            loadLabel.Text = "MOV, WEBM или MP4. Обработка остаётся на вашем компьютере.";
+            loadLabel.Font = new Font("Segoe UI", 9.25f);
+            loadLabel.Text = "MOV, WEBM или MP4  •  файл остаётся на вашем компьютере";
 
             dropScreen.Controls.Add(studioMark);
             dropScreen.Controls.Add(appTitle);
@@ -254,27 +254,30 @@ namespace StickerStudio
             int availW = dropScreen.ClientSize.Width;
             int availH = dropScreen.ClientSize.Height;
 
-            int margin = Theme.S(availW < 930 ? 32 : 46);
-            int headerY = Theme.S(22);
-            studioMark.Location = new Point(margin, headerY);
-            appTitle.Location = new Point(studioMark.Right + Theme.S(12), Theme.S(22));
-            appCaption.Location = new Point(studioMark.Right + Theme.S(13), Theme.S(49));
-            telegramBadge.Location = new Point(availW - telegramBadge.Width - margin, Theme.S(29));
+            int edge = Theme.S(availW < Theme.S(1120) ? 32 : 48);
+            int contentW = Math.Min(Theme.S(1320), Math.Max(Theme.S(760), availW - edge * 2));
+            int contentX = Math.Max(edge, (availW - contentW) / 2);
+            int headerY = Theme.S(24);
+            studioMark.Location = new Point(contentX, headerY);
+            appTitle.Location = new Point(studioMark.Right + Theme.S(13), headerY + Theme.S(2));
+            appCaption.Location = new Point(studioMark.Right + Theme.S(14), headerY + Theme.S(30));
+            telegramBadge.Location = new Point(contentX + contentW - telegramBadge.Width, headerY + Theme.S(11));
 
-            int gap = Theme.S(34);
-            int usable = Math.Max(Theme.S(620), availW - margin * 2 - gap);
-            int leftW = Math.Min(Theme.S(350), Math.Max(Theme.S(270), usable * 42 / 100));
-            int rightW = Math.Max(Theme.S(300), usable - leftW);
-            int top = Theme.S(132);
+            int gap = Theme.S(contentW < Theme.S(1100) ? 36 : 80);
+            int leftW = contentW < Theme.S(1100)
+                ? Math.Max(Theme.S(330), (contentW - gap) * 40 / 100)
+                : Theme.S(500);
+            int rightW = contentW - leftW - gap;
+            int top = Math.Max(Theme.S(150), (availH - Theme.S(680)) / 2);
 
-            landingTitle.SetBounds(margin, top, leftW, Theme.S(106));
-            landingSubtitle.SetBounds(margin, top + Theme.S(124), leftW, Theme.S(66));
-            landingDetails.SetBounds(margin, top + Theme.S(222), leftW, Theme.S(110));
+            landingTitle.SetBounds(contentX, top, leftW, Theme.S(158));
+            landingSubtitle.SetBounds(contentX, top + Theme.S(176), leftW, Theme.S(84));
+            landingDetails.SetBounds(contentX, top + Theme.S(286), leftW, Theme.S(150));
 
-            int rightX = margin + leftW + gap;
-            int dropH = Math.Max(Theme.S(300), Math.Min(Theme.S(390), availH - top - Theme.S(102)));
-            dropArea.SetBounds(rightX, top, Math.Min(rightW, availW - rightX - margin), dropH);
-            loadLabel.SetBounds(rightX, dropArea.Bottom + Theme.S(10), dropArea.Width, Theme.S(42));
+            int rightX = contentX + leftW + gap;
+            int dropH = Math.Max(Theme.S(360), Math.Min(Theme.S(500), availH - top - Theme.S(92)));
+            dropArea.SetBounds(rightX, top, rightW, dropH);
+            loadLabel.SetBounds(rightX, dropArea.Bottom + Theme.S(12), dropArea.Width, Theme.S(38));
             dropScreen.Invalidate();
         }
 
@@ -283,6 +286,31 @@ namespace StickerStudio
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Theme.BackMain);
+
+            if (dropArea != null && dropArea.Width > 0)
+            {
+                Rectangle glow = new Rectangle(
+                    dropArea.Left - Theme.S(120),
+                    dropArea.Top - Theme.S(130),
+                    dropArea.Width + Theme.S(240),
+                    dropArea.Height + Theme.S(260));
+                using (GraphicsPath gp = new GraphicsPath())
+                {
+                    gp.AddEllipse(glow);
+                    using (PathGradientBrush gb = new PathGradientBrush(gp))
+                    {
+                        gb.CenterPoint = new PointF(dropArea.Left + dropArea.Width * .64f,
+                            dropArea.Top + dropArea.Height * .46f);
+                        gb.CenterColor = Color.FromArgb(28, Theme.Accent);
+                        gb.SurroundColors = new Color[] { Color.FromArgb(0, Theme.Accent) };
+                        g.FillPath(gb, gp);
+                    }
+                }
+            }
+
+            using (Pen divider = new Pen(Color.FromArgb(26, Color.White), 1f))
+                g.DrawLine(divider, Theme.S(40), Theme.S(96),
+                    Math.Max(Theme.S(40), dropScreen.Width - Theme.S(40)), Theme.S(96));
         }
 
         static void OpenChannel()
@@ -404,7 +432,55 @@ namespace StickerStudio
             editor.Visible = false;
             dropScreen.Visible = true;
             loadLabel.ForeColor = Theme.TextMuted;
-            loadLabel.Text = "MOV, WEBM или MP4. Обработка остаётся на вашем компьютере.";
+            loadLabel.Text = "MOV, WEBM или MP4  •  файл остаётся на вашем компьютере";
+        }
+    }
+
+    class LandingBenefits : Control
+    {
+        public LandingBenefits()
+        {
+            DoubleBuffered = true;
+            ResizeRedraw = true;
+            BackColor = Theme.BackMain;
+            AccessibleRole = AccessibleRole.StaticText;
+            AccessibleName = "Параметры стикера: 512 на 512, до 6 секунд, до 256 килобайт";
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Parent != null ? Parent.BackColor : Theme.BackMain);
+            string[] values = { "512 × 512", "До 6 секунд", "До 256 КБ" };
+            string[] captions = { "квадратный холст", "точный фрагмент", "лимит Telegram" };
+            using (Font valueFont = new Font("Segoe UI Semibold", 9.5f))
+            using (Font captionFont = new Font("Segoe UI", 9.5f))
+            using (SolidBrush iconBack = new SolidBrush(Color.FromArgb(55, Theme.Accent)))
+            {
+                int rowH = Theme.S(44);
+                int iconSide = Theme.S(26);
+                int valueX = Theme.S(42);
+                int captionX = Theme.S(150);
+                for (int i = 0; i < values.Length; i++)
+                {
+                    int y = i * rowH;
+                    Rectangle icon = new Rectangle(0, y + Theme.S(4), iconSide, iconSide);
+                    using (GraphicsPath p = StyledButton.Rounded(icon, iconSide / 2))
+                        g.FillPath(iconBack, p);
+                    IconPainter.Draw(g, StudioIcon.Check,
+                        new RectangleF(icon.X + Theme.S(5), icon.Y + Theme.S(5),
+                            icon.Width - Theme.S(10), icon.Height - Theme.S(10)), Theme.Accent2);
+                    TextRenderer.DrawText(g, values[i], valueFont,
+                        new Rectangle(valueX, y, Math.Max(1, captionX - valueX - Theme.S(8)), rowH),
+                        Theme.TextMain, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                    TextRenderer.DrawText(g, captions[i], captionFont,
+                        new Rectangle(captionX, y, Math.Max(1, Width - captionX), rowH),
+                        Theme.TextMuted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                }
+            }
         }
     }
 
@@ -466,60 +542,73 @@ namespace StickerStudio
             r.Inflate(-pad, -pad);
 
             Color border = active ? Theme.Accent : (hover ? Theme.BorderHover : Theme.BorderIdle);
-            using (GraphicsPath path = Rounded(r, Theme.S(14)))
+            using (GraphicsPath path = Rounded(r, Theme.S(16)))
             {
-                Color fillColor = active ? Color.FromArgb(39, 24, 19) :
-                    (hover ? Theme.SurfaceRaised : Theme.Surface);
+                Color fillColor = active ? Color.FromArgb(42, 25, 20) :
+                    (hover ? Theme.SurfaceRaised : Color.FromArgb(21, 21, 25));
                 using (SolidBrush fill = new SolidBrush(fillColor))
                     g.FillPath(fill, path);
-                using (Pen pen = new Pen(border, (active || Focused) ? 2f : 1.2f))
-                {
-                    if (!active && !Focused) pen.DashPattern = new float[] { 5f, 4f };
+                using (Pen pen = new Pen(border, (active || Focused) ? 2f : 1f))
                     g.DrawPath(pen, path);
-                }
             }
 
             string l1 = active ? "Отпустите для импорта" : "Перетащите видео сюда";
-            string l2 = "или выберите файл с компьютера";
-            int iconSide = Theme.S(48);
-            int iconY = r.Top + Math.Max(Theme.S(34), (r.Height - Theme.S(260)) / 2);
+            string l2 = active ? "Файл откроется сразу после загрузки" : "или выберите файл с компьютера";
+            int iconTile = Theme.S(76);
+            int iconY = r.Top + Math.Max(Theme.S(38), (r.Height - Theme.S(330)) / 2);
             int contentOffset = pressed ? Theme.S(1) : 0;
-            Rectangle iconRect = new Rectangle(r.Left + (r.Width - iconSide) / 2,
-                iconY + contentOffset, iconSide, iconSide);
-            IconPainter.Draw(g, StudioIcon.VideoUpload, iconRect,
-                active ? Theme.AccentHover : Theme.Accent);
+            Rectangle iconTileRect = new Rectangle(r.Left + (r.Width - iconTile) / 2,
+                iconY + contentOffset, iconTile, iconTile);
+            using (GraphicsPath ip = Rounded(iconTileRect, Theme.S(16)))
+            {
+                using (SolidBrush ib = new SolidBrush(active
+                    ? Color.FromArgb(104, 47, 24) : Color.FromArgb(65, 35, 25)))
+                    g.FillPath(ib, ip);
+                using (Pen outline = new Pen(Color.FromArgb(84, Theme.Accent), 1f))
+                    g.DrawPath(outline, ip);
+            }
+            IconPainter.Draw(g, StudioIcon.FileVideo,
+                new RectangleF(iconTileRect.X + Theme.S(20), iconTileRect.Y + Theme.S(20),
+                    iconTileRect.Width - Theme.S(40), iconTileRect.Height - Theme.S(40)),
+                active ? Theme.AccentHover : Theme.Accent2);
 
-            using (Font f1 = new Font("Segoe UI Semibold", 16f))
-            using (Font f2 = new Font("Segoe UI", 10f))
-            using (Font fb = new Font("Segoe UI Semibold", 9.5f))
+            using (Font f1 = new Font("Bahnschrift SemiBold", 18f))
+            using (Font f2 = new Font("Segoe UI", 10.5f))
+            using (Font fb = new Font("Segoe UI Semibold", 10f))
             using (Font fc = new Font("Segoe UI", 9f))
             {
                 SizeF s1 = g.MeasureString(l1, f1);
                 SizeF s2 = g.MeasureString(l2, f2);
-                float y = iconRect.Bottom + Theme.S(14);
+                float y = iconTileRect.Bottom + Theme.S(20);
                 using (SolidBrush b1 = new SolidBrush(Theme.TextMain))
                     g.DrawString(l1, f1, b1, r.Left + (r.Width - s1.Width) / 2f, y);
-                y += s1.Height + Theme.S(4);
+                y += s1.Height + Theme.S(5);
                 using (SolidBrush b2 = new SolidBrush(Theme.TextMuted))
                     g.DrawString(l2, f2, b2, r.Left + (r.Width - s2.Width) / 2f, y);
 
-                Rectangle cta = new Rectangle(r.Left + (r.Width - Theme.S(184)) / 2,
-                    (int)(y + s2.Height + Theme.S(18)) + contentOffset, Theme.S(184), Theme.S(42));
+                Rectangle cta = new Rectangle(r.Left + (r.Width - Theme.S(228)) / 2,
+                    (int)(y + s2.Height + Theme.S(22)) + contentOffset, Theme.S(228), Theme.S(50));
                 using (GraphicsPath cp = Rounded(cta, Theme.S(10)))
                 using (SolidBrush cb = new SolidBrush(
                     pressed ? Theme.AccentPressed : (hover || active ? Theme.AccentHover : Theme.Accent)))
                     g.FillPath(cb, cp);
                 string ctaText = "Выбрать видео";
                 SizeF cs = g.MeasureString(ctaText, fb);
+                int ctaIcon = Theme.S(18);
+                float groupW = ctaIcon + Theme.S(8) + cs.Width;
+                float groupX = cta.Left + (cta.Width - groupW) / 2f;
+                IconPainter.Draw(g, StudioIcon.VideoUpload,
+                    new RectangleF(groupX, cta.Top + (cta.Height - ctaIcon) / 2f, ctaIcon, ctaIcon),
+                    Color.White);
                 using (SolidBrush cw = new SolidBrush(Color.White))
-                    g.DrawString(ctaText, fb, cw, cta.Left + (cta.Width - cs.Width) / 2f,
+                    g.DrawString(ctaText, fb, cw, groupX + ctaIcon + Theme.S(8),
                         cta.Top + (cta.Height - cs.Height) / 2f);
 
-                string formats = "MOV   /   WEBM   /   MP4";
+                string formats = "MOV    /    WEBM    /    MP4";
                 SizeF fs = g.MeasureString(formats, fc);
                 using (SolidBrush fm = new SolidBrush(Theme.TextMuted))
                     g.DrawString(formats, fc, fm, r.Left + (r.Width - fs.Width) / 2f,
-                        r.Bottom - Theme.S(34));
+                        r.Bottom - Theme.S(38));
             }
         }
 
