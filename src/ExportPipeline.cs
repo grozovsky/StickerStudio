@@ -114,7 +114,7 @@ namespace StickerStudio
                     {
                         using (Bitmap bmp = LoadArgb(f))
                         {
-                            ChromaKey.ProtectTransparentColors(bmp, 3);
+                            ChromaKey.PrepareForVp9(bmp, 3);
                             bmp.Save(f, System.Drawing.Imaging.ImageFormat.Png);
                         }
                     }
@@ -149,7 +149,8 @@ namespace StickerStudio
                         " -c:v libvpx-vp9 -pix_fmt " + pixFmt +
                         " -b:v " + kbps + "k -minrate " + (kbps / 2) + "k -maxrate " + (kbps * 3 / 2) + "k" +
                         " -vf \"" + vf + "\"" +
-                        " -deadline good -cpu-used 2 -row-mt 1 -auto-alt-ref 0" +
+                        " -deadline good -cpu-used 0 -aq-mode 1 -sharpness 2" +
+                        " -row-mt 1 -auto-alt-ref 0" +
                         " -passlogfile \"" + passLog + "\"";
 
                     if (progress != null)

@@ -179,6 +179,73 @@ namespace StickerStudio
             bitmap.UnlockBits(data);
         }
 
+        // Финальная подготовка 512px-кадра. Внешнее субпиксельное перо хранится
+        // прямо в alpha и поэтому остаётся гладким даже в плеерах, которые
+        // увеличивают WebM через nearest/point sampling. Затем RGB прозрачной
+        // стороны продолжается от foreground для безопасного yuva420p.
+        public static void PrepareForVp9(Bitmap bitmap, int colorRadius)
+        {
+            if (bitmap == null) return;
+            BitmapData data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+            try
+            {
+                int bytes = Math.Abs(data.Stride) * bitmap.Height;
+                byte[] pixels = new byte[bytes];
+                Marshal.Copy(data.Scan0, pixels, 0, bytes);
+                PrepareForVp9(pixels, bitmap.Width, bitmap.Height, data.Stride, colorRadius);
+                Marshal.Copy(pixels, 0, data.Scan0, bytes);
+            }
+            finally { bitmap.UnlockBits(data); }
+        }
+
+        public static void PrepareForVp9(byte[] px, int w, int h, int stride,
+            int colorRadius)
+        {
+            SoftenOuterAlpha(px, w, h, stride);
+            ProtectTransparentColors(px, w, h, stride, colorRadius);
+        }
+
+        static void SoftenOuterAlpha(byte[] px, int w, int h, int stride)
+        {
+            if (px == null || w <= 0 || h <= 0) return;
+            byte[] source = new byte[w * h];
+            for (int y = 0; y < h; y++)
+            {
+                int row = y * stride;
+                for (int x = 0; x < w; x++)
+                    source[y * w + x] = px[row + x * 4 + 3];
+            }
+
+            // Gaussian 1-2-1, но только наружу: уверенный foreground и тонкие
+            // провода не теряют плотность, рядом появляется coverage до ~0.3 px.
+            for (int y = 0; y < h; y++)
+            {
+                int y0 = Math.Max(0, y - 1), y1 = Math.Min(h - 1, y + 1);
+                int row = y * stride;
+                for (int x = 0; x < w; x++)
+                {
+                    int x0 = Math.Max(0, x - 1), x1 = Math.Min(w - 1, x + 1);
+                    int weighted = 0, total = 0;
+                    for (int yy = y0; yy <= y1; yy++)
+                    {
+                        int wy = yy == y ? 2 : 1;
+                        for (int xx = x0; xx <= x1; xx++)
+                        {
+                            int weight = wy * (xx == x ? 2 : 1);
+                            weighted += source[yy * w + xx] * weight;
+                            total += weight;
+                        }
+                    }
+                    int blurred = weighted / Math.Max(1, total);
+                    int feather = (blurred * 2 + 1) / 3;
+                    int current = source[y * w + x];
+                    if (feather > current)
+                        px[row + x * 4 + 3] = (byte)feather;
+                }
+            }
+        }
+
         // VP9 yuva420p усредняет цвет 2x2 без знания alpha. Поэтому RGB прозрачной
         // стороны кромки должен продолжать foreground, иначе зелёный screen снова
         // протечёт в непрозрачный пиксель при chroma subsampling.

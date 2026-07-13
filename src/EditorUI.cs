@@ -153,7 +153,7 @@ namespace StickerStudio
                 if (code != 0 || !File.Exists(finalPath)) return null;
                 Bitmap final = LoadArgb(finalPath);
                 if (request.Key != null && request.Key.Enabled)
-                    ChromaKey.ProtectTransparentColors(final, 3);
+                    ChromaKey.PrepareForVp9(final, 3);
                 return final;
             }
             catch { return null; }
@@ -757,7 +757,7 @@ namespace StickerStudio
                         if (n <= 0) return false;
                         read += n;
                     }
-                    ChromaKey.ProtectTransparentColors(frame, width, height,
+                    ChromaKey.PrepareForVp9(frame, width, height,
                         width * 4, 3);
                     stream.Position = index * frameBytes;
                     stream.Write(frame, 0, frameBytes);
