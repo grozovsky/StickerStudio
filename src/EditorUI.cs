@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -20,7 +21,7 @@ namespace StickerStudio
         public bool DecodeVp9Alpha;
     }
 
-    // Быстрые JPEG-кадры остаются для playback. Когда пользователь остановился,
+    // Быстрые JPEG-кадры остаются резервом на время подготовки HQ-cache. Когда пользователь остановился,
     // этот worker строит один точный кадр тем же путём, что и export:
     // native crop -> chroma key -> Lanczos 512.
     sealed class ExactPreviewRenderer : IDisposable
@@ -88,7 +89,7 @@ namespace StickerStudio
                     }
                     if (request == null) break;
 
-                    Bitmap bitmap = Render(request);
+                    Bitmap bitmap = Render(request, generation);
                     if (bitmap == null)
                     {
                         bool retry;
@@ -97,7 +98,7 @@ namespace StickerStudio
                             retry = !stopped && pending == null &&
                                 generation == cancellationGeneration;
                         }
-                        if (retry) bitmap = Render(request);
+                        if (retry) bitmap = Render(request, generation);
                     }
                     if (bitmap != null)
                     {
@@ -109,7 +110,7 @@ namespace StickerStudio
             }
         }
 
-        Bitmap Render(ExactPreviewRequest request)
+        Bitmap Render(ExactPreviewRequest request, long generation)
         {
             if (request.Info == null || string.IsNullOrEmpty(request.FfmpegPath) ||
                 string.IsNullOrEmpty(request.SourcePath)) return null;
@@ -132,7 +133,8 @@ namespace StickerStudio
                     (request.DecodeVp9Alpha ? "-c:v libvpx-vp9 " : "") +
                     "-i \"" + request.SourcePath +
                     "\" -ss " + Ffmpeg.Inv(request.Time) +
-                    " -frames:v 1 -vf \"" + prepFilter + "\" \"" + nativePath + "\"", out code);
+                    " -frames:v 1 -vf \"" + prepFilter + "\" \"" + nativePath + "\"",
+                    generation, out code);
                 if (code != 0 || !File.Exists(nativePath)) return null;
 
                 if (request.Key != null && request.Key.Enabled)
@@ -147,7 +149,7 @@ namespace StickerStudio
                 RunIsolated(request.FfmpegPath,
                     "-y -hide_banner -loglevel error -i \"" + nativePath +
                     "\" -frames:v 1 -vf \"" + geometry.PostKeyFilter +
-                    "\" \"" + finalPath + "\"", out code);
+                    "\" \"" + finalPath + "\"", generation, out code);
                 if (code != 0 || !File.Exists(finalPath)) return null;
                 return LoadArgb(finalPath);
             }
@@ -158,7 +160,8 @@ namespace StickerStudio
             }
         }
 
-        string RunIsolated(string executable, string arguments, out int exitCode)
+        string RunIsolated(string executable, string arguments, long generation,
+            out int exitCode)
         {
             System.Diagnostics.ProcessStartInfo psi =
                 new System.Diagnostics.ProcessStartInfo(executable, arguments);
@@ -173,7 +176,8 @@ namespace StickerStudio
                 // A cancelled request can no longer start after Kill() missed it.
                 lock (sync)
                 {
-                    if (stopped) { exitCode = -1; return ""; }
+                    if (stopped || generation != cancellationGeneration)
+                    { exitCode = -1; return ""; }
                     process.Start();
                     currentProcess = process;
                 }
@@ -227,6 +231,575 @@ namespace StickerStudio
         }
     }
 
+    sealed class PlaybackPreviewRequest
+    {
+        public long Revision;
+        public string FfmpegPath;
+        public string SourcePath;
+        public ProbeInfo Info;
+        public double Start;
+        public double End;
+        public double Fps;
+        public Rectangle CropRect;
+        public KeySettings Key;
+    }
+
+    // Кадры лежат единым BGRA-файлом на диске: 6 секунд при 30 fps занимают
+    // до 180 МБ на диске, но в памяти остаются только один кадр и read-buffer.
+    sealed class PlaybackPreviewCache : IDisposable
+    {
+        readonly object sync = new object();
+        readonly string directory;
+        readonly string rawPath;
+        FileStream lease;
+        FileStream stream;
+        byte[] buffer;
+        bool disposed;
+
+        public long Revision;
+        public double Start;
+        public double End;
+        public double Fps;
+        public int Width;
+        public int Height;
+        public int FrameCount;
+
+        public PlaybackPreviewCache(string dir, string path, FileStream leaseStream)
+        {
+            directory = dir;
+            rawPath = path;
+            lease = leaseStream;
+        }
+
+        public int FrameIndexAt(double time)
+        {
+            if (FrameCount <= 0 || Fps <= 0) return -1;
+            int index = (int)Math.Floor((time - Start) * Fps + 0.0001);
+            return Math.Max(0, Math.Min(FrameCount - 1, index));
+        }
+
+        public Bitmap DecodeFrame(int index)
+        {
+            if (index < 0 || index >= FrameCount) return null;
+            int frameBytes = checked(Width * Height * 4);
+            lock (sync)
+            {
+                if (disposed) return null;
+                if (stream == null)
+                    stream = new FileStream(rawPath, FileMode.Open, FileAccess.Read,
+                        FileShare.Read, frameBytes, FileOptions.RandomAccess);
+                if (buffer == null || buffer.Length != frameBytes)
+                    buffer = new byte[frameBytes];
+
+                stream.Position = (long)index * frameBytes;
+                int read = 0;
+                while (read < frameBytes)
+                {
+                    int n = stream.Read(buffer, read, frameBytes - read);
+                    if (n <= 0) return null;
+                    read += n;
+                }
+
+                Bitmap bitmap = new Bitmap(Width, Height,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                System.Drawing.Imaging.BitmapData data = bitmap.LockBits(
+                    new Rectangle(0, 0, Width, Height),
+                    System.Drawing.Imaging.ImageLockMode.WriteOnly,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                try
+                {
+                    int rowBytes = Width * 4;
+                    if (data.Stride == rowBytes)
+                    {
+                        System.Runtime.InteropServices.Marshal.Copy(buffer, 0,
+                            data.Scan0, frameBytes);
+                    }
+                    else
+                    {
+                        for (int y = 0; y < Height; y++)
+                        {
+                            IntPtr row = new IntPtr(data.Scan0.ToInt64() +
+                                (long)y * data.Stride);
+                            System.Runtime.InteropServices.Marshal.Copy(buffer,
+                                y * rowBytes, row, rowBytes);
+                        }
+                    }
+                }
+                finally { bitmap.UnlockBits(data); }
+                return bitmap;
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (sync)
+            {
+                if (disposed) return;
+                disposed = true;
+                if (stream != null) stream.Dispose();
+                if (lease != null) lease.Dispose();
+                stream = null;
+                lease = null;
+                buffer = null;
+            }
+            PlaybackPreviewRenderer.DeleteCacheDirectory(directory);
+        }
+    }
+
+    // Чтение 1 МБ BGRA-кадра и создание Bitmap выполняются вне UI-потока.
+    // Новые запросы вытесняют старые, поэтому decoder не накапливает очередь.
+    sealed class PlaybackFrameDecoder : IDisposable
+    {
+        readonly object sync = new object();
+        readonly AutoResetEvent wake = new AutoResetEvent(false);
+        readonly Thread worker;
+        PlaybackPreviewCache pendingCache;
+        long pendingRevision;
+        int pendingIndex = -1;
+        long generation;
+        bool stopped;
+
+        public event Action<long, int, Bitmap> Completed;
+        public event Action<long, int> Failed;
+
+        public PlaybackFrameDecoder()
+        {
+            worker = new Thread(WorkerLoop);
+            worker.IsBackground = true;
+            worker.Name = "StickerStudio playback decoder";
+            worker.Start();
+        }
+
+        public void Request(PlaybackPreviewCache cache, long revision, int index)
+        {
+            if (cache == null || index < 0) return;
+            lock (sync)
+            {
+                if (stopped) return;
+                generation++;
+                pendingCache = cache;
+                pendingRevision = revision;
+                pendingIndex = index;
+            }
+            wake.Set();
+        }
+
+        public void CancelPending()
+        {
+            lock (sync)
+            {
+                generation++;
+                pendingCache = null;
+                pendingIndex = -1;
+            }
+        }
+
+        void WorkerLoop()
+        {
+            while (true)
+            {
+                wake.WaitOne();
+                while (true)
+                {
+                    PlaybackPreviewCache cache;
+                    long revision;
+                    long requestGeneration;
+                    int index;
+                    lock (sync)
+                    {
+                        if (stopped) return;
+                        cache = pendingCache;
+                        revision = pendingRevision;
+                        index = pendingIndex;
+                        requestGeneration = generation;
+                        pendingCache = null;
+                        pendingIndex = -1;
+                    }
+                    if (cache == null || index < 0) break;
+
+                    Bitmap bitmap = null;
+                    try { bitmap = cache.DecodeFrame(index); }
+                    catch { }
+                    lock (sync)
+                    {
+                        if (stopped || requestGeneration != generation)
+                        {
+                            if (bitmap != null) bitmap.Dispose();
+                            continue;
+                        }
+                    }
+                    if (bitmap != null)
+                    {
+                        Action<long, int, Bitmap> handler = Completed;
+                        if (handler != null) handler(revision, index, bitmap);
+                        else bitmap.Dispose();
+                    }
+                    else
+                    {
+                        Action<long, int> handler = Failed;
+                        if (handler != null) handler(revision, index);
+                    }
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (sync)
+            {
+                if (stopped) return;
+                stopped = true;
+                pendingCache = null;
+            }
+            wake.Set();
+            bool joined = false;
+            try { joined = worker.Join(1000); } catch { }
+            if (joined) wake.Dispose();
+        }
+    }
+
+    // Фоновый producer строит выбранные пользователем 0.5–6 секунд тем же
+    // порядком операций, что экспорт: native crop -> C# key -> Lanczos -> BGRA.
+    sealed class PlaybackPreviewRenderer : IDisposable
+    {
+        readonly object sync = new object();
+        readonly AutoResetEvent wake = new AutoResetEvent(false);
+        readonly Thread worker;
+        PlaybackPreviewRequest pending;
+        System.Diagnostics.Process currentProcess;
+        long cancellationGeneration;
+        bool stopped;
+
+        public event Action<long, PlaybackPreviewCache> Completed;
+        public event Action<long, string> Failed;
+
+        public PlaybackPreviewRenderer()
+        {
+            CleanupOldCaches();
+            worker = new Thread(WorkerLoop);
+            worker.IsBackground = true;
+            worker.Name = "StickerStudio HQ playback";
+            worker.Start();
+        }
+
+        public void Request(PlaybackPreviewRequest request)
+        {
+            if (request == null) return;
+            lock (sync)
+            {
+                if (stopped) return;
+                pending = request;
+            }
+            wake.Set();
+        }
+
+        public void CancelPending()
+        {
+            System.Diagnostics.Process process;
+            lock (sync)
+            {
+                pending = null;
+                cancellationGeneration++;
+                process = currentProcess;
+            }
+            try
+            {
+                if (process != null && !process.HasExited) process.Kill();
+            }
+            catch { }
+        }
+
+        void WorkerLoop()
+        {
+            while (true)
+            {
+                wake.WaitOne();
+                while (true)
+                {
+                    PlaybackPreviewRequest request;
+                    long generation;
+                    lock (sync)
+                    {
+                        if (stopped) return;
+                        request = pending;
+                        pending = null;
+                        generation = cancellationGeneration;
+                    }
+                    if (request == null) break;
+
+                    string error;
+                    PlaybackPreviewCache cache = Build(request, generation, out error);
+                    bool current;
+                    lock (sync)
+                    {
+                        current = !stopped && generation == cancellationGeneration;
+                    }
+                    if (!current)
+                    {
+                        if (cache != null) cache.Dispose();
+                        continue;
+                    }
+
+                    if (cache != null)
+                    {
+                        Action<long, PlaybackPreviewCache> handler = Completed;
+                        if (handler != null) handler(request.Revision, cache);
+                        else cache.Dispose();
+                    }
+                    else
+                    {
+                        Action<long, string> handler = Failed;
+                        if (handler != null) handler(request.Revision, error);
+                    }
+                }
+            }
+        }
+
+        PlaybackPreviewCache Build(PlaybackPreviewRequest request, long generation,
+            out string error)
+        {
+            error = "Не удалось подготовить качественное воспроизведение";
+            if (request.Info == null || request.End - request.Start < 0.05 ||
+                string.IsNullOrEmpty(request.FfmpegPath) ||
+                string.IsNullOrEmpty(request.SourcePath)) return null;
+
+            string tempDir = Path.Combine(Path.GetTempPath(),
+                "ssplay_" + Guid.NewGuid().ToString("N"));
+            FileStream lease = null;
+            bool keep = false;
+            try
+            {
+                Directory.CreateDirectory(tempDir);
+                lease = new FileStream(Path.Combine(tempDir, "active.lock"),
+                    FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+                StickerFrameGeometry geometry = FrameGeometry.Create(
+                    request.Info, request.CropRect);
+                string rawPath = Path.Combine(tempDir, "frames.bgra");
+                string fps = Ffmpeg.Inv(request.Fps);
+                string cut = " -ss " + Ffmpeg.Inv(request.Start) +
+                    " -t " + Ffmpeg.Inv(request.End - request.Start);
+                int code;
+                string log;
+
+                if (request.Key != null && request.Key.Enabled)
+                {
+                    string seqDir = Path.Combine(tempDir, "native");
+                    Directory.CreateDirectory(seqDir);
+                    string prep = "fps=" + fps + "," +
+                        (geometry.PreKeyFilter.Length > 0
+                            ? geometry.PreKeyFilter + "," : "") + "format=rgba";
+                    log = RunIsolated(request.FfmpegPath,
+                        "-y -hide_banner -loglevel error -i \"" + request.SourcePath +
+                        "\"" + cut + " -vf \"" + prep + "\" \"" +
+                        Path.Combine(seqDir, "f%05d.png") + "\"", generation, out code);
+                    if (code != 0)
+                    {
+                        error = "Подготовка кадров: " + Ffmpeg.LastLine(log);
+                        return null;
+                    }
+
+                    string[] frames = Directory.GetFiles(seqDir, "f*.png")
+                        .OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToArray();
+                    if (frames.Length == 0) return null;
+                    foreach (string frame in frames)
+                    {
+                        if (IsCancelled(generation)) return null;
+                        using (Bitmap bitmap = LoadArgb(frame))
+                        {
+                            ChromaKey.Apply(bitmap, request.Key);
+                            bitmap.Save(frame, System.Drawing.Imaging.ImageFormat.Png);
+                        }
+                    }
+
+                    log = RunIsolated(request.FfmpegPath,
+                        "-y -hide_banner -loglevel error -framerate " + fps +
+                        " -i \"" + Path.Combine(seqDir, "f%05d.png") +
+                        "\" -vf \"" + geometry.PostKeyFilter +
+                        ",format=bgra\" -an -sn -f rawvideo \"" + rawPath + "\"",
+                        generation, out code);
+                    DeleteCacheDirectory(seqDir);
+                }
+                else
+                {
+                    string filters = "fps=" + fps + "," +
+                        (geometry.PreKeyFilter.Length > 0
+                            ? geometry.PreKeyFilter + "," : "") +
+                        geometry.PostKeyFilter + ",format=bgra";
+                    log = RunIsolated(request.FfmpegPath,
+                        "-y -hide_banner -loglevel error -i \"" + request.SourcePath +
+                        "\"" + cut + " -vf \"" + filters +
+                        "\" -an -sn -f rawvideo \"" + rawPath + "\"",
+                        generation, out code);
+                }
+
+                if (code != 0 || !File.Exists(rawPath))
+                {
+                    error = "Кэш воспроизведения: " + Ffmpeg.LastLine(log);
+                    return null;
+                }
+
+                int frameBytes = checked(geometry.OutputSize.Width *
+                    geometry.OutputSize.Height * 4);
+                long length = new FileInfo(rawPath).Length;
+                int count = (int)(length / frameBytes);
+                if (count <= 0) return null;
+
+                PlaybackPreviewCache cache = new PlaybackPreviewCache(tempDir, rawPath, lease);
+                lease = null;
+                cache.Revision = request.Revision;
+                cache.Start = request.Start;
+                cache.End = request.End;
+                cache.Fps = request.Fps;
+                cache.Width = geometry.OutputSize.Width;
+                cache.Height = geometry.OutputSize.Height;
+                cache.FrameCount = count;
+                keep = true;
+                return cache;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return null;
+            }
+            finally
+            {
+                if (lease != null) lease.Dispose();
+                if (!keep)
+                    DeleteCacheDirectory(tempDir);
+            }
+        }
+
+        static int cleanupStarted;
+
+        static void CleanupOldCaches()
+        {
+            if (Interlocked.Exchange(ref cleanupStarted, 1) != 0) return;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    string temp = Path.GetTempPath();
+                    foreach (string dir in Directory.GetDirectories(temp, "ssplay_*"))
+                    {
+                        try
+                        {
+                            if (Directory.GetLastWriteTimeUtc(dir) < DateTime.UtcNow.AddHours(-2))
+                            {
+                                string lockPath = Path.Combine(dir, "active.lock");
+                                using (FileStream lease = new FileStream(lockPath,
+                                    FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+                                { }
+                                DeleteCacheDirectory(dir);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            });
+        }
+
+        public static void DeleteCacheDirectory(string directory)
+        {
+            if (string.IsNullOrEmpty(directory)) return;
+            try
+            {
+                if (Directory.Exists(directory)) Directory.Delete(directory, true);
+                return;
+            }
+            catch { }
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                for (int attempt = 0; attempt < 8; attempt++)
+                {
+                    Thread.Sleep(250 * (attempt + 1));
+                    try
+                    {
+                        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+                        return;
+                    }
+                    catch { }
+                }
+            });
+        }
+
+        bool IsCancelled(long generation)
+        {
+            lock (sync)
+                return stopped || generation != cancellationGeneration;
+        }
+
+        string RunIsolated(string executable, string arguments, long generation,
+            out int exitCode)
+        {
+            System.Diagnostics.ProcessStartInfo psi =
+                new System.Diagnostics.ProcessStartInfo(executable, arguments);
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.RedirectStandardError = true;
+            System.Diagnostics.Process process = new System.Diagnostics.Process();
+            process.StartInfo = psi;
+            try
+            {
+                lock (sync)
+                {
+                    if (stopped || generation != cancellationGeneration)
+                    { exitCode = -1; return ""; }
+                    process.Start();
+                    currentProcess = process;
+                }
+                string error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                exitCode = process.ExitCode;
+                return error;
+            }
+            catch
+            {
+                exitCode = -1;
+                return "";
+            }
+            finally
+            {
+                lock (sync)
+                {
+                    if (object.ReferenceEquals(currentProcess, process))
+                        currentProcess = null;
+                }
+                process.Dispose();
+            }
+        }
+
+        static Bitmap LoadArgb(string path)
+        {
+            byte[] bytes = File.ReadAllBytes(path);
+            using (MemoryStream stream = new MemoryStream(bytes))
+            using (Image image = Image.FromStream(stream))
+            {
+                Bitmap bitmap = new Bitmap(image.Width, image.Height,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (Graphics graphics = Graphics.FromImage(bitmap))
+                    graphics.DrawImage(image, 0, 0, image.Width, image.Height);
+                return bitmap;
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (sync)
+            {
+                if (stopped) return;
+                stopped = true;
+                pending = null;
+            }
+            CancelPending();
+            wake.Set();
+            bool joined = false;
+            try { joined = worker.Join(1500); } catch { }
+            if (joined) wake.Dispose();
+        }
+    }
+
     // ---------------------------------------------------------------
     //  Превью: шахматка, кадр, кроп-рамка 1:1, пипетка
     // ---------------------------------------------------------------
@@ -246,6 +819,7 @@ namespace StickerStudio
         Bitmap keyedBmp; int keyedIdx = -1;
         int keyVersion; int keyedVersion = -1;
         Bitmap exactBmp;
+        Bitmap playbackBmp;
 
         // drag
         int dragCorner = -1;      // 0..3 = ручки; 4 = перемещение
@@ -283,6 +857,22 @@ namespace StickerStudio
             Invalidate();
         }
 
+        public void SetPlaybackBitmap(Bitmap bitmap)
+        {
+            if (object.ReferenceEquals(playbackBmp, bitmap)) return;
+            if (playbackBmp != null) playbackBmp.Dispose();
+            playbackBmp = bitmap;
+            Invalidate();
+        }
+
+        public void ClearPlaybackBitmap()
+        {
+            if (playbackBmp == null) return;
+            playbackBmp.Dispose();
+            playbackBmp = null;
+            Invalidate();
+        }
+
         public void BumpKeyVersion()
         {
             keyVersion++;
@@ -294,6 +884,7 @@ namespace StickerStudio
             baseIdx = -1;
             keyedIdx = -1;
             ClearExactBitmap();
+            ClearPlaybackBitmap();
             Invalidate();
         }
 
@@ -301,6 +892,7 @@ namespace StickerStudio
         {
             if (Doc == null) return new Size(4, 3);
             if (!CropMode && exactBmp != null) return exactBmp.Size;
+            if (!CropMode && playbackBmp != null) return playbackBmp.Size;
             if (!CropMode && !AppliedCropPreview.IsEmpty)
                 return AppliedCropPreview.Size;
             return new Size(Doc.PreviewW, Doc.PreviewH);
@@ -391,7 +983,8 @@ namespace StickerStudio
 
             Rectangle r = ImageScreenRect();
             bool useExact = !CropMode && exactBmp != null;
-            Bitmap bmp = useExact ? exactBmp : CurrentBitmap();
+            bool usePlayback = !useExact && !CropMode && playbackBmp != null;
+            Bitmap bmp = useExact ? exactBmp : (usePlayback ? playbackBmp : CurrentBitmap());
             if (bmp == null) return;
 
             RectangleF sel = CropMode ? ImageToScreen(CropSel) : RectangleF.Empty;
@@ -414,10 +1007,10 @@ namespace StickerStudio
                     }
                 }
 
-                g.InterpolationMode = useExact
+                g.InterpolationMode = useExact || usePlayback
                     ? InterpolationMode.HighQualityBicubic
                     : InterpolationMode.Bilinear;
-                if (!useExact && !CropMode && !AppliedCropPreview.IsEmpty)
+                if (!useExact && !usePlayback && !CropMode && !AppliedCropPreview.IsEmpty)
                     g.DrawImage(bmp, r, AppliedCropPreview, GraphicsUnit.Pixel);
                 else
                     g.DrawImage(bmp, r);
@@ -576,7 +1169,8 @@ namespace StickerStudio
                 if (baseBmp != null) baseBmp.Dispose();
                 if (keyedBmp != null) keyedBmp.Dispose();
                 if (exactBmp != null) exactBmp.Dispose();
-                baseBmp = keyedBmp = exactBmp = null;
+                if (playbackBmp != null) playbackBmp.Dispose();
+                baseBmp = keyedBmp = exactBmp = playbackBmp = null;
             }
             base.Dispose(disposing);
         }

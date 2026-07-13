@@ -43,6 +43,16 @@ namespace StickerStudio
         ExactPreviewRenderer exactPreviewRenderer;
         System.Windows.Forms.Timer exactPreviewTimer;
         long exactPreviewRevision;
+        PlaybackPreviewRenderer playbackPreviewRenderer;
+        PlaybackFrameDecoder playbackFrameDecoder;
+        System.Windows.Forms.Timer playbackCacheTimer;
+        PlaybackPreviewCache playbackCache;
+        long playbackCacheRevision;
+        bool playbackCacheBuilding;
+        bool playWhenCacheReady;
+        int playbackFrameIndex = -1;
+        int playbackRequestedFrameIndex = -1;
+        bool shuttingDown;
 
         public EditorView()
         {
@@ -59,6 +69,20 @@ namespace StickerStudio
             {
                 exactPreviewTimer.Stop();
                 RequestExactPreview();
+            };
+
+            playbackPreviewRenderer = new PlaybackPreviewRenderer();
+            playbackPreviewRenderer.Completed += PlaybackCacheCompleted;
+            playbackPreviewRenderer.Failed += PlaybackCacheFailed;
+            playbackFrameDecoder = new PlaybackFrameDecoder();
+            playbackFrameDecoder.Completed += PlaybackFrameCompleted;
+            playbackFrameDecoder.Failed += PlaybackFrameFailed;
+            playbackCacheTimer = new System.Windows.Forms.Timer();
+            playbackCacheTimer.Interval = 240;
+            playbackCacheTimer.Tick += delegate
+            {
+                playbackCacheTimer.Stop();
+                RequestPlaybackCache();
             };
         }
 
@@ -626,6 +650,7 @@ namespace StickerStudio
             UpdateButtons();
             UpdateTimeLabel();
             ScheduleExactPreview(1);
+            SchedulePlaybackCache(180);
         }
 
         void ScheduleExactPreview(int delayMs)
@@ -705,7 +730,7 @@ namespace StickerStudio
         void ExactPreviewCompleted(long revision, Bitmap bitmap)
         {
             if (bitmap == null) return;
-            if (IsDisposed || !IsHandleCreated)
+            if (shuttingDown || IsDisposed || !IsHandleCreated)
             {
                 bitmap.Dispose();
                 return;
@@ -714,7 +739,7 @@ namespace StickerStudio
             {
                 BeginInvoke((MethodInvoker)delegate
                 {
-                    if (IsDisposed || revision != exactPreviewRevision || doc == null ||
+                    if (shuttingDown || IsDisposed || revision != exactPreviewRevision || doc == null ||
                         busy || playing || preview.CropMode)
                     {
                         bitmap.Dispose();
@@ -724,6 +749,143 @@ namespace StickerStudio
                 });
             }
             catch { bitmap.Dispose(); }
+        }
+
+        void SchedulePlaybackCache(int delayMs)
+        {
+            if (playing) StopPlayback();
+            playbackCacheRevision++;
+            playbackCacheBuilding = false;
+            playWhenCacheReady = false;
+            playbackFrameIndex = -1;
+            playbackRequestedFrameIndex = -1;
+            if (playbackCacheTimer != null) playbackCacheTimer.Stop();
+            if (playbackPreviewRenderer != null) playbackPreviewRenderer.CancelPending();
+            if (playbackFrameDecoder != null) playbackFrameDecoder.CancelPending();
+            if (playbackCache != null)
+            {
+                playbackCache.Dispose();
+                playbackCache = null;
+            }
+            if (preview != null) preview.ClearPlaybackBitmap();
+            if (doc == null || busy || playing || preview.CropMode ||
+                string.IsNullOrEmpty(ffmpegPath)) return;
+
+            playbackCacheTimer.Interval = Math.Max(1, delayMs);
+            playbackCacheTimer.Start();
+        }
+
+        void RequestPlaybackCache()
+        {
+            if (doc == null || busy || playing || preview.CropMode ||
+                playbackPreviewRenderer == null || playbackCacheBuilding) return;
+
+            PlaybackPreviewRequest request = new PlaybackPreviewRequest();
+            request.Revision = playbackCacheRevision;
+            request.FfmpegPath = ffmpegPath;
+            request.SourcePath = doc.SourcePath;
+            request.Info = doc.Info;
+            request.Start = doc.State.CutStart;
+            request.End = doc.State.CutEnd;
+            request.Fps = doc.PreviewFps > 0 ? Math.Min(30, doc.PreviewFps) : 30;
+            request.CropRect = doc.State.CropRect;
+            request.Key = preview.ActiveKey == null
+                ? new KeySettings()
+                : preview.ActiveKey.Clone();
+            playbackCacheBuilding = true;
+            playbackPreviewRenderer.Request(request);
+        }
+
+        void PlaybackCacheCompleted(long revision, PlaybackPreviewCache cache)
+        {
+            if (cache == null) return;
+            if (shuttingDown || IsDisposed || !IsHandleCreated)
+            {
+                cache.Dispose();
+                return;
+            }
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (shuttingDown || IsDisposed || revision != playbackCacheRevision || doc == null ||
+                        busy || preview.CropMode)
+                    {
+                        cache.Dispose();
+                        return;
+                    }
+                    playbackCacheBuilding = false;
+                    if (playbackCache != null) playbackCache.Dispose();
+                    playbackCache = cache;
+                    playbackFrameIndex = -1;
+                    playbackRequestedFrameIndex = -1;
+                    if (playWhenCacheReady)
+                    {
+                        playWhenCacheReady = false;
+                        StartPlayback();
+                    }
+                });
+            }
+            catch { cache.Dispose(); }
+        }
+
+        void PlaybackCacheFailed(long revision, string error)
+        {
+            if (shuttingDown || IsDisposed || !IsHandleCreated) return;
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (shuttingDown || IsDisposed || revision != playbackCacheRevision) return;
+                    playbackCacheBuilding = false;
+                    playWhenCacheReady = false;
+                    statusLabel.ForeColor = Theme.Err;
+                    statusLabel.Text = "Не удалось подготовить чёткое воспроизведение: " + error;
+                });
+            }
+            catch { }
+        }
+
+        void PlaybackFrameCompleted(long revision, int index, Bitmap bitmap)
+        {
+            if (bitmap == null) return;
+            if (shuttingDown || IsDisposed || !IsHandleCreated)
+            {
+                bitmap.Dispose();
+                return;
+            }
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (shuttingDown || IsDisposed || !playing ||
+                        revision != playbackCacheRevision || playbackCache == null ||
+                        index != playbackRequestedFrameIndex)
+                    {
+                        bitmap.Dispose();
+                        return;
+                    }
+                    playbackFrameIndex = index;
+                    preview.SetPlaybackBitmap(bitmap);
+                });
+            }
+            catch { bitmap.Dispose(); }
+        }
+
+        void PlaybackFrameFailed(long revision, int index)
+        {
+            if (shuttingDown || IsDisposed || !IsHandleCreated) return;
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (shuttingDown || IsDisposed || !playing ||
+                        revision != playbackCacheRevision ||
+                        index != playbackRequestedFrameIndex) return;
+                    playbackRequestedFrameIndex = -1;
+                });
+            }
+            catch { }
         }
 
         Rectangle CropToPreview(Rectangle orig)
@@ -823,22 +985,63 @@ namespace StickerStudio
         void TogglePlay()
         {
             if (doc == null || busy) return;
-            playing = !playing;
-            btnPlay.Icon = playing ? StudioIcon.Pause : StudioIcon.Play;
-            btnPlay.Invalidate();
             if (playing)
             {
-                CancelExactPreview(true);
-                playClock.Restart();
-                playTimer.Start();
+                StopPlayback();
+                return;
             }
-            else
+            if (playWhenCacheReady)
             {
-                playOffset = CurrentPlayTime() - doc.State.CutStart;
-                playClock.Stop();
-                playTimer.Stop();
-                ScheduleExactPreview(1);
+                playWhenCacheReady = false;
+                UpdateButtons();
+                return;
             }
+
+            if (playbackCache == null)
+            {
+                playWhenCacheReady = true;
+                CancelExactPreview(true);
+                if (playbackCacheTimer != null) playbackCacheTimer.Stop();
+                RequestPlaybackCache();
+                statusLabel.ForeColor = Theme.TextMuted;
+                statusLabel.Text = "Готовлю чёткое воспроизведение 512 × 512…";
+                return;
+            }
+            StartPlayback();
+        }
+
+        void StartPlayback()
+        {
+            if (doc == null || playbackCache == null || playing) return;
+            playing = true;
+            playbackFrameIndex = -1;
+            playbackRequestedFrameIndex = -1;
+            btnPlay.Icon = StudioIcon.Pause;
+            btnPlay.Invalidate();
+            CancelExactPreview(true);
+            playClock.Restart();
+            playTimer.Start();
+            statusLabel.ForeColor = Theme.TextMuted;
+            statusLabel.Text = "Чёткое воспроизведение " +
+                playbackCache.Width + " × " + playbackCache.Height;
+            PlayTick();
+        }
+
+        void StopPlayback()
+        {
+            if (doc != null && playing)
+                playOffset = CurrentPlayTime() - doc.State.CutStart;
+            playing = false;
+            playClock.Stop();
+            playTimer.Stop();
+            playbackFrameIndex = -1;
+            playbackRequestedFrameIndex = -1;
+            if (playbackFrameDecoder != null) playbackFrameDecoder.CancelPending();
+            preview.ClearPlaybackBitmap();
+            btnPlay.Icon = StudioIcon.Play;
+            btnPlay.Invalidate();
+            UpdateButtons();
+            ScheduleExactPreview(1);
         }
 
         double CurrentPlayTime()
@@ -855,6 +1058,16 @@ namespace StickerStudio
             timeline.Position = t;
             timeline.Invalidate();
             preview.SetFrame(doc.FrameAt(t));
+            if (playbackCache != null)
+            {
+                int index = playbackCache.FrameIndexAt(t);
+                if (index != playbackRequestedFrameIndex)
+                {
+                    playbackRequestedFrameIndex = index;
+                    playbackFrameDecoder.Request(playbackCache,
+                        playbackCacheRevision, index);
+                }
+            }
             UpdateTimeLabel();
         }
 
@@ -872,10 +1085,17 @@ namespace StickerStudio
 
         void OnCutCommitted(EditState pre)
         {
+            if (playing) StopPlayback();
             doc.PushUndoSnapshot(pre);
             showingResult = false;
+            timeline.Position = Math.Max(doc.State.CutStart,
+                Math.Min(doc.State.CutEnd, timeline.Position));
+            playOffset = Math.Max(0, Math.Min(doc.CutDuration,
+                timeline.Position - doc.State.CutStart));
+            preview.SetFrame(doc.FrameAt(timeline.Position));
             UpdateButtons();
             UpdateTimeLabel();
+            SchedulePlaybackCache(220);
         }
 
         // ---------------- crop ----------------
@@ -922,6 +1142,7 @@ namespace StickerStudio
             preview.Invalidate();
             UpdateButtons();
             ScheduleExactPreview(1);
+            SchedulePlaybackCache(180);
         }
 
         // ---------------- chroma key ----------------
@@ -942,6 +1163,7 @@ namespace StickerStudio
             preview.ActiveKey = editingKey;
             preview.BumpKeyVersion();
             ScheduleExactPreview(120);
+            SchedulePlaybackCache(320);
         }
 
         void TogglePick()
@@ -962,6 +1184,7 @@ namespace StickerStudio
             btnPick.Invalidate();
             preview.BumpKeyVersion();
             ScheduleExactPreview(160);
+            SchedulePlaybackCache(360);
         }
 
         void OnKeyParamChanged()
@@ -972,6 +1195,7 @@ namespace StickerStudio
             UpdateKeyLabels();
             preview.BumpKeyVersion();
             ScheduleExactPreview(160);
+            SchedulePlaybackCache(360);
         }
 
         void UpdateKeyLabels()
@@ -1006,6 +1230,7 @@ namespace StickerStudio
             }
             UpdateButtons();
             ScheduleExactPreview(1);
+            SchedulePlaybackCache(180);
         }
 
         void ShowDefaultInspector()
@@ -1047,6 +1272,7 @@ namespace StickerStudio
         void DoUndo()
         {
             if (doc == null || busy || !doc.CanUndo) return;
+            if (playing) StopPlayback();
             if (preview.CropMode) CancelCrop();
             CloseKeyPanel(false);
             doc.Undo();
@@ -1054,10 +1280,16 @@ namespace StickerStudio
             preview.ActiveKey = doc.State.Key;
             preview.AppliedCropPreview = CropToPreview(doc.State.CropRect);
             preview.BumpKeyVersion();
+            timeline.Position = Math.Max(doc.State.CutStart,
+                Math.Min(doc.State.CutEnd, timeline.Position));
+            playOffset = Math.Max(0, Math.Min(doc.CutDuration,
+                timeline.Position - doc.State.CutStart));
+            preview.SetFrame(doc.FrameAt(timeline.Position));
             timeline.Invalidate();
             UpdateButtons();
             UpdateTimeLabel();
             ScheduleExactPreview(1);
+            SchedulePlaybackCache(180);
         }
 
         // ---------------- export ----------------
@@ -1074,6 +1306,10 @@ namespace StickerStudio
             }
             if (playing) TogglePlay();
             CancelExactPreview(false);
+            if (playbackCacheTimer != null) playbackCacheTimer.Stop();
+            if (playbackPreviewRenderer != null) playbackPreviewRenderer.CancelPending();
+            playbackCacheBuilding = false;
+            playWhenCacheReady = false;
 
             EditState snapshot = doc.State.Clone();
 
@@ -1158,6 +1394,22 @@ namespace StickerStudio
             playTimer.Stop();
             playing = false;
             CancelExactPreview(true);
+            playbackCacheRevision++;
+            playWhenCacheReady = false;
+            playbackCacheBuilding = false;
+            playbackFrameIndex = -1;
+            playbackRequestedFrameIndex = -1;
+            if (playbackCacheTimer != null) playbackCacheTimer.Stop();
+            if (playbackPreviewRenderer != null) playbackPreviewRenderer.CancelPending();
+            if (playbackFrameDecoder != null) playbackFrameDecoder.CancelPending();
+            if (playbackCache != null)
+            {
+                playbackCache.Dispose();
+                playbackCache = null;
+            }
+            if (preview != null) preview.ClearPlaybackBitmap();
+            btnPlay.Icon = StudioIcon.Play;
+            btnPlay.Invalidate();
         }
 
         // Горячие клавиши редактора (форвардятся из MainForm.ProcessCmdKey)
@@ -1219,12 +1471,29 @@ namespace StickerStudio
         {
             if (disposing)
             {
+                shuttingDown = true;
+                playbackCacheRevision++;
+                exactPreviewRevision++;
                 if (exactPreviewTimer != null) exactPreviewTimer.Dispose();
                 if (exactPreviewRenderer != null)
                 {
                     exactPreviewRenderer.Completed -= ExactPreviewCompleted;
                     exactPreviewRenderer.Dispose();
                 }
+                if (playbackCacheTimer != null) playbackCacheTimer.Dispose();
+                if (playbackPreviewRenderer != null)
+                {
+                    playbackPreviewRenderer.Completed -= PlaybackCacheCompleted;
+                    playbackPreviewRenderer.Failed -= PlaybackCacheFailed;
+                    playbackPreviewRenderer.Dispose();
+                }
+                if (playbackFrameDecoder != null)
+                {
+                    playbackFrameDecoder.Completed -= PlaybackFrameCompleted;
+                    playbackFrameDecoder.Failed -= PlaybackFrameFailed;
+                    playbackFrameDecoder.Dispose();
+                }
+                if (playbackCache != null) playbackCache.Dispose();
             }
             base.Dispose(disposing);
         }
