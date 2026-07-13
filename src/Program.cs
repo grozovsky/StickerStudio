@@ -14,8 +14,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("Sticker Studio")]
 [assembly: AssemblyProduct("Sticker Studio by UX Live")]
 [assembly: AssemblyDescription("Mini-redaktor telegram-stikerov")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 
 namespace StickerStudio
 {
@@ -105,6 +105,9 @@ namespace StickerStudio
         LandingHero landingHero;
         UxLiveMark studioMark;
         EditorView editor;
+        StyledButton updateChip;
+        string updateUrl;
+        bool updating;
         string pendingFile;
         VideoDoc currentDoc;
         volatile bool loading;
@@ -221,10 +224,20 @@ namespace StickerStudio
             editor.Visible = false;
             editor.BackRequested += delegate { ShowDropScreen(); };
 
+            // --- чип автообновления (появляется только когда есть новая версия) ---
+            updateChip = new StyledButton();
+            updateChip.Accent = true;
+            updateChip.Visible = false;
+            updateChip.Size = new Size(Theme.S(280), Theme.S(40));
+            updateChip.Click += delegate { StartUpdate(); };
+            Controls.Add(updateChip);
+
             Controls.Add(editor);
             Controls.Add(dropScreen);
+            Resize += delegate { PositionUpdateChip(); };
             Shown += delegate
             {
+                UpdateManager.CheckInBackground(this, OnUpdateFound);
                 if (Ffmpeg.Find() == null && !Ffmpeg.HasEmbedded())
                 {
                     loadLabel.Text = "⚠ ffmpeg.exe не найден рядом с программой. Экспорт недоступен.";
@@ -257,6 +270,57 @@ namespace StickerStudio
             if (editor != null && editor.Visible && editor.HandleKey(keyData))
                 return true;
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        void PositionUpdateChip()
+        {
+            if (updateChip == null) return;
+            updateChip.Location = new Point(
+                ClientSize.Width - updateChip.Width - Theme.S(20),
+                ClientSize.Height - updateChip.Height - Theme.S(20));
+        }
+
+        void OnUpdateFound(Version latest, string url)
+        {
+            if (updating || updateChip == null) return;
+            updateUrl = url;
+            updateChip.Text = "Доступна версия " + latest + " — обновить";
+            PositionUpdateChip();
+            updateChip.Visible = true;
+            updateChip.BringToFront();
+        }
+
+        void StartUpdate()
+        {
+            if (updating || string.IsNullOrEmpty(updateUrl)) return;
+            DialogResult r = MessageBox.Show(this,
+                "Скачать новую версию и перезапустить программу?\n" +
+                "Текущая работа в редакторе будет закрыта.",
+                "Обновление Sticker Studio",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (r != DialogResult.Yes) return;
+
+            updating = true;
+            updateChip.Enabled = false;
+            updateChip.Text = "Скачивание… 0%";
+            UpdateManager.DownloadAndApply(updateUrl,
+                delegate(int pct)
+                {
+                    try { updateChip.Text = "Скачивание… " + pct + "%"; }
+                    catch { }
+                },
+                delegate(string err)
+                {
+                    try
+                    {
+                        updating = false;
+                        updateChip.Enabled = true;
+                        updateChip.Text = "Не удалось обновить — повторить";
+                        MessageBox.Show(this, "Ошибка обновления: " + err,
+                            "Обновление", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                    catch { }
+                });
         }
 
         void LayoutDropArea()

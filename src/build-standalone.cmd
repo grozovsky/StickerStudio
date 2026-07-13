@@ -21,7 +21,7 @@ if not exist ffmpeg.exe.gz (
     /resource:phosphor-icons.ttf,phosphor.ttf ^
     /resource:phosphor-icons-fill.ttf,phosphor-fill.ttf ^
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
-    /out:..\StickerStudio-Standalone.exe Program.cs Common.cs Controls.cs ChromaKey.cs VideoDoc.cs ExportPipeline.cs EditorUI.cs EditorView.cs
+    /out:..\StickerStudio-Standalone.exe Program.cs Common.cs Controls.cs ChromaKey.cs VideoDoc.cs ExportPipeline.cs EditorUI.cs EditorView.cs Updater.cs
 
 if %errorlevel%==0 (
     echo OK: ..\StickerStudio-Standalone.exe
