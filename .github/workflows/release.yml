@@ -42,3 +42,15 @@ jobs:
           } else {
             gh release create $tag StickerStudio-Standalone.exe StickerStudio-Standalone.zip --title "Sticker Studio $tag" --notes "Один файл, внутри уже есть ffmpeg — скачал и работаешь. Windows 10/11, установка не нужна. Если SmartScreen предупреждает: Подробнее -> Выполнить в любом случае."
           }
+
+      # в репо всегда остаётся только последний релиз
+      - name: Keep only latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $old = gh release list --json tagName -q '.[].tagName' | Where-Object { $_ -and $_ -ne $tag }
+          foreach ($t in $old) {
+            gh release delete $t --cleanup-tag --yes
+            Write-Host "removed old release $t"
+          }
