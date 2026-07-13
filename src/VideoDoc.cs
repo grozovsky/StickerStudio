@@ -87,7 +87,7 @@ namespace StickerStudio
             Info = Ffmpeg.Probe(ffmpeg, path);
             if (!Info.Ok) return "Не удалось открыть видео: " + Info.Error;
             if (Info.Duration > MaxInputSeconds)
-                return "Видео длиннее " + (int)MaxInputSeconds + " секунд — для стикера загрузите ролик покороче";
+                return "Видео длиннее " + (int)MaxInputSeconds + " секунд. Для стикера загрузите ролик покороче.";
 
             SourceHasAlpha = Info.HasAlpha;
 

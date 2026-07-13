@@ -1,14 +1,118 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace StickerStudio
 {
-    // Скруглённая кнопка с иконкой (Segoe MDL2 Assets), hover/pressed/checked/accent
-    class StyledButton : Control
+    enum StudioIcon
     {
-        public string Glyph;            // символ Segoe MDL2 Assets, напр. ""
+        None,
+        Back,
+        Undo,
+        Crop,
+        Background,
+        Play,
+        Pause,
+        Export,
+        Lock,
+        Check,
+        Close,
+        VideoUpload,
+        Eyedropper
+    }
+
+    // A small native vector family: one stroke, one optical grid, no font-glyph
+    // dependency.  It stays sharp at fractional Windows DPI scales.
+    static class IconPainter
+    {
+        public static void Draw(Graphics g, StudioIcon icon, RectangleF bounds, Color color)
+        {
+            if (icon == StudioIcon.None || bounds.Width <= 0 || bounds.Height <= 0) return;
+
+            float scale = Math.Min(bounds.Width, bounds.Height) / 24f;
+            float ox = bounds.X + (bounds.Width - 24f * scale) / 2f;
+            float oy = bounds.Y + (bounds.Height - 24f * scale) / 2f;
+            GraphicsState state = g.Save();
+            g.TranslateTransform(ox, oy);
+            g.ScaleTransform(scale, scale);
+
+            using (Pen p = new Pen(color, 1.85f))
+            using (SolidBrush b = new SolidBrush(color))
+            {
+                p.StartCap = LineCap.Round;
+                p.EndCap = LineCap.Round;
+                p.LineJoin = LineJoin.Round;
+
+                switch (icon)
+                {
+                    case StudioIcon.Back:
+                        g.DrawLines(p, new PointF[] { new PointF(15.5f, 5f), new PointF(8.5f, 12f), new PointF(15.5f, 19f) });
+                        break;
+                    case StudioIcon.Undo:
+                        g.DrawArc(p, 5f, 6f, 14f, 12f, 205f, 275f);
+                        g.DrawLines(p, new PointF[] { new PointF(5.5f, 6f), new PointF(5.5f, 11f), new PointF(10.5f, 10.5f) });
+                        break;
+                    case StudioIcon.Crop:
+                        g.DrawLines(p, new PointF[] { new PointF(5f, 3.5f), new PointF(5f, 17f), new PointF(20.5f, 17f) });
+                        g.DrawLines(p, new PointF[] { new PointF(3.5f, 7f), new PointF(17f, 7f), new PointF(17f, 20.5f) });
+                        break;
+                    case StudioIcon.Background:
+                        g.DrawLine(p, 6f, 18f, 17f, 7f);
+                        g.DrawLine(p, 14.7f, 6.2f, 17.8f, 9.3f);
+                        g.DrawLine(p, 6f, 4f, 6f, 7f);
+                        g.DrawLine(p, 4.5f, 5.5f, 7.5f, 5.5f);
+                        g.DrawLine(p, 18.5f, 15f, 18.5f, 19f);
+                        g.DrawLine(p, 16.5f, 17f, 20.5f, 17f);
+                        break;
+                    case StudioIcon.Play:
+                        g.FillPolygon(b, new PointF[] { new PointF(8f, 5.5f), new PointF(19f, 12f), new PointF(8f, 18.5f) });
+                        break;
+                    case StudioIcon.Pause:
+                        p.Width = 2.6f;
+                        g.DrawLine(p, 9f, 6f, 9f, 18f);
+                        g.DrawLine(p, 15f, 6f, 15f, 18f);
+                        break;
+                    case StudioIcon.Export:
+                        g.DrawLine(p, 12f, 4f, 12f, 15f);
+                        g.DrawLines(p, new PointF[] { new PointF(8f, 11f), new PointF(12f, 15f), new PointF(16f, 11f) });
+                        g.DrawLines(p, new PointF[] { new PointF(5f, 16f), new PointF(5f, 20f), new PointF(19f, 20f), new PointF(19f, 16f) });
+                        break;
+                    case StudioIcon.Lock:
+                        g.DrawArc(p, 8f, 3.5f, 8f, 10f, 180f, 180f);
+                        g.DrawRectangle(p, 6f, 10f, 12f, 10f);
+                        g.FillEllipse(b, 11f, 14f, 2f, 2f);
+                        break;
+                    case StudioIcon.Check:
+                        g.DrawLines(p, new PointF[] { new PointF(5f, 12.5f), new PointF(10f, 17.5f), new PointF(19.5f, 7.5f) });
+                        break;
+                    case StudioIcon.Close:
+                        g.DrawLine(p, 6f, 6f, 18f, 18f);
+                        g.DrawLine(p, 18f, 6f, 6f, 18f);
+                        break;
+                    case StudioIcon.VideoUpload:
+                        g.DrawRectangle(p, 3.5f, 5f, 17f, 14f);
+                        g.DrawLine(p, 12f, 15f, 12f, 8f);
+                        g.DrawLines(p, new PointF[] { new PointF(8.8f, 11.2f), new PointF(12f, 8f), new PointF(15.2f, 11.2f) });
+                        break;
+                    case StudioIcon.Eyedropper:
+                        g.DrawLine(p, 7f, 17f, 17f, 7f);
+                        g.DrawLine(p, 14f, 5f, 19f, 10f);
+                        g.DrawLine(p, 5f, 19f, 8f, 18f);
+                        break;
+                }
+            }
+            g.Restore(state);
+        }
+    }
+
+    // Native, keyboard-accessible button with the shared StudioIcon family.
+    class StyledButton : Button
+    {
+        public StudioIcon Icon;
         public bool Accent;             // синяя основная кнопка
         public bool Checked;            // "включённое" состояние (тоже синее)
         public bool RoundFull;          // полностью круглая (для Play)
@@ -16,8 +120,6 @@ namespace StickerStudio
         public bool Vertical;           // иконка над подписью (панель инструментов)
         public bool Border;             // тонкая граница для вторичных действий
         public Color SwatchColor = Color.Empty; // цветовой квадратик (для пипетки)
-        public float GlyphSize = 11f;
-        public Point GlyphNudge = Point.Empty;  // оптическая центровка иконки
 
         bool hover, pressed;
 
@@ -29,6 +131,10 @@ namespace StickerStudio
             ForeColor = Theme.TextMain;
             Font = new Font("Segoe UI", 9.5f);
             TabStop = true;
+            AccessibleRole = AccessibleRole.PushButton;
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            UseVisualStyleBackColor = false;
         }
 
         public void SetChecked(bool v)
@@ -42,16 +148,6 @@ namespace StickerStudio
         protected override void OnMouseUp(MouseEventArgs e) { pressed = false; Invalidate(); base.OnMouseUp(e); }
         protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
 
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            if (Enabled && (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space))
-            {
-                OnClick(EventArgs.Empty);
-                e.Handled = true;
-            }
-            base.OnKeyDown(e);
-        }
-
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
@@ -63,7 +159,7 @@ namespace StickerStudio
             if (!Enabled) bg = Ghost ? Color.Empty : Theme.BtnPressed;
             else if (Accent) bg = pressed ? Theme.AccentPressed : (hover ? Theme.AccentHover : Theme.Accent);
             else if (Checked) bg = pressed ? Theme.AccentSoft :
-                (hover ? Color.FromArgb(60, 53, 106) : Theme.AccentSoft);
+                (hover ? Color.FromArgb(92, 40, 24) : Theme.AccentSoft);
             else if (Ghost)
             {
                 if (pressed) bg = Theme.BtnPressed;
@@ -74,7 +170,7 @@ namespace StickerStudio
             if (!Enabled && Ghost) paintBg = false;
 
             Color fore = !Enabled ? Color.FromArgb(92, Theme.TextMuted) :
-                (Accent ? Color.White : (Checked ? Color.FromArgb(207, 199, 255) : Theme.TextMain));
+                (Accent ? Color.White : (Checked ? Color.FromArgb(255, 205, 186) : Theme.TextMain));
 
             int rad = RoundFull ? Height / 2 : Theme.S(11);
             Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
@@ -98,39 +194,33 @@ namespace StickerStudio
             if (Focused && ShowFocusCues && Enabled)
             {
                 using (GraphicsPath path = Rounded(r, rad))
-                using (Pen fp = new Pen(Accent ? Color.White : Theme.Accent, 1.6f))
+                using (Pen fp = new Pen(Accent ? Color.White : Theme.Accent, 2f))
                     g.DrawPath(fp, path);
             }
 
-            // контент: [цвет][иконка][текст] по центру
+            // content: [swatch][icon][label], centered as a single unit
             int sw = SwatchColor.IsEmpty ? 0 : Theme.S(16);
-            SizeF glyphSz = SizeF.Empty;
-            Font glyphFont = null;
-            if (!string.IsNullOrEmpty(Glyph))
-            {
-                glyphFont = new Font("Segoe MDL2 Assets", GlyphSize);
-                glyphSz = g.MeasureString(Glyph, glyphFont);
-            }
+            int iconSide = Icon == StudioIcon.None ? 0 : Theme.S(18);
+            SizeF iconSz = new SizeF(iconSide, iconSide);
             SizeF textSz = string.IsNullOrEmpty(Text) ? SizeF.Empty : g.MeasureString(Text, Font);
             int gap = Theme.S(6);
             float total = sw + (sw > 0 ? gap : 0)
-                + glyphSz.Width + (glyphSz.Width > 0 && textSz.Width > 0 ? gap : 0)
+                + iconSz.Width + (iconSz.Width > 0 && textSz.Width > 0 ? gap : 0)
                 + textSz.Width;
             float x = (Width - total) / 2f;
+            int pressOffset = pressed ? Theme.S(1) : 0;
 
             if (Vertical && sw == 0)
             {
-                float vgap = textSz.Height > 0 && glyphSz.Height > 0 ? Theme.S(3) : 0;
-                float totalH = glyphSz.Height + vgap + textSz.Height;
-                float y = (Height - totalH) / 2f;
-                if (glyphFont != null)
+                int verticalIcon = Icon == StudioIcon.None ? 0 : Theme.S(22);
+                float vgap = textSz.Height > 0 && verticalIcon > 0 ? Theme.S(5) : 0;
+                float totalH = verticalIcon + vgap + textSz.Height;
+                float y = (Height - totalH) / 2f + pressOffset;
+                if (verticalIcon > 0)
                 {
-                    using (SolidBrush fb = new SolidBrush(fore))
-                        g.DrawString(Glyph, glyphFont, fb,
-                            (Width - glyphSz.Width) / 2f + GlyphNudge.X, y + GlyphNudge.Y);
-                    y += glyphSz.Height + vgap;
-                    glyphFont.Dispose();
-                    glyphFont = null;
+                    IconPainter.Draw(g, Icon,
+                        new RectangleF((Width - verticalIcon) / 2f, y, verticalIcon, verticalIcon), fore);
+                    y += verticalIcon + vgap;
                 }
                 if (textSz.Width > 0)
                 {
@@ -150,18 +240,16 @@ namespace StickerStudio
                 }
                 x += sw + gap;
             }
-            if (glyphFont != null)
+            if (iconSide > 0)
             {
-                using (SolidBrush fb = new SolidBrush(fore))
-                    g.DrawString(Glyph, glyphFont, fb,
-                        x + GlyphNudge.X, (Height - glyphSz.Height) / 2f + Theme.S(1) + GlyphNudge.Y);
-                x += glyphSz.Width + (textSz.Width > 0 ? gap : 0);
-                glyphFont.Dispose();
+                IconPainter.Draw(g, Icon,
+                    new RectangleF(x, (Height - iconSide) / 2f + pressOffset, iconSide, iconSide), fore);
+                x += iconSide + (textSz.Width > 0 ? gap : 0);
             }
             if (textSz.Width > 0)
             {
                 using (SolidBrush fb = new SolidBrush(fore))
-                    g.DrawString(Text, Font, fb, x, (Height - textSz.Height) / 2f);
+                    g.DrawString(Text, Font, fb, x, (Height - textSz.Height) / 2f + pressOffset);
             }
         }
 
@@ -175,6 +263,13 @@ namespace StickerStudio
             p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
             p.CloseFigure();
             return p;
+        }
+
+        protected override void OnTextChanged(EventArgs e)
+        {
+            AccessibleName = Text;
+            Invalidate();
+            base.OnTextChanged(e);
         }
     }
 
@@ -222,7 +317,7 @@ namespace StickerStudio
         {
             DoubleBuffered = true;
             ResizeRedraw = true;
-            Font = new Font("Segoe UI Semibold", 8.25f);
+            Font = new Font("Segoe UI Semibold", 9f);
             ForeColor = Theme.TextSoft;
         }
 
@@ -233,10 +328,10 @@ namespace StickerStudio
             g.Clear(Parent != null ? Parent.BackColor : Theme.BackMain);
             Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
             Color fill = Strong ? Color.FromArgb(56, Tone) : Color.FromArgb(26, Tone);
-            using (GraphicsPath p = StyledButton.Rounded(r, Height / 2))
+            using (GraphicsPath p = StyledButton.Rounded(r, Theme.S(9)))
             using (SolidBrush b = new SolidBrush(fill))
                 g.FillPath(b, p);
-            using (GraphicsPath p = StyledButton.Rounded(r, Height / 2))
+            using (GraphicsPath p = StyledButton.Rounded(r, Theme.S(9)))
             using (Pen pen = new Pen(Color.FromArgb(82, Tone), 1f))
                 g.DrawPath(pen, p);
 
@@ -255,12 +350,15 @@ namespace StickerStudio
         }
     }
 
-    class StudioMark : Control
+    class UxLiveMark : Control
     {
-        public StudioMark()
+        static Image logo;
+
+        public UxLiveMark()
         {
             DoubleBuffered = true;
             ResizeRedraw = true;
+            if (logo == null) logo = LoadLogo();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -268,16 +366,32 @@ namespace StickerStudio
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Parent != null ? Parent.BackColor : Theme.BackMain);
-            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
-            using (GraphicsPath p = StyledButton.Rounded(r, Theme.S(10)))
-            using (LinearGradientBrush b = new LinearGradientBrush(r, Theme.Accent, Theme.Telegram, 35f))
-                g.FillPath(b, p);
-            using (Font f = new Font("Segoe UI Semibold", Math.Max(9f, Height / Theme.UiScale * .36f)))
-            using (SolidBrush b = new SolidBrush(Color.White))
+            if (logo != null)
             {
-                SizeF s = g.MeasureString("S", f);
-                g.DrawString("S", f, b, (Width - s.Width) / 2f, (Height - s.Height) / 2f - Theme.S(1));
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                int side = Math.Min(Width, Height);
+                Rectangle r = new Rectangle((Width - side) / 2, (Height - side) / 2, side, side);
+                g.DrawImage(logo, r);
             }
+        }
+
+        static Image LoadLogo()
+        {
+            try
+            {
+                using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("uxlive.png"))
+                {
+                    if (s == null) return null;
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        s.CopyTo(ms);
+                        ms.Position = 0;
+                        using (Bitmap temp = new Bitmap(ms)) return new Bitmap(temp);
+                    }
+                }
+            }
+            catch { return null; }
         }
     }
 
@@ -313,6 +427,8 @@ namespace StickerStudio
             DoubleBuffered = true;
             ResizeRedraw = true;
             Cursor = Cursors.Hand;
+            TabStop = true;
+            AccessibleRole = AccessibleRole.Slider;
         }
 
         int ThumbX()
@@ -368,6 +484,12 @@ namespace StickerStudio
             }
 
             int tr = Theme.S(hover || drag || Focused ? 10 : 8);
+            if (Focused && ShowFocusCues)
+            {
+                using (Pen focus = new Pen(Theme.Accent, 2f))
+                    g.DrawEllipse(focus, tx - tr / 2 - Theme.S(3), cy - tr / 2 - Theme.S(3),
+                        tr + Theme.S(6), tr + Theme.S(6));
+            }
             using (SolidBrush thumb = new SolidBrush(Color.White))
                 g.FillEllipse(thumb, tx - tr / 2 - 1, cy - tr / 2 - 1, tr + 2, tr + 2);
             using (SolidBrush inner = new SolidBrush(Theme.Accent))

@@ -22,7 +22,7 @@ namespace StickerStudio
         Panel toolbar, content, toolRail, mainColumn, stageHost, bottomBar;
         Panel inspector, inspectorDefault, keyPanel, cropPanel;
         SurfacePanel readinessCard;
-        StudioMark studioMark;
+        UxLiveMark studioMark;
         PillLabel readinessBadge, cropBadge, keyBadge;
         Label timeLabel, statusLabel, lbGain, lbShrink, cropHint;
         Label fileLabel, stageTitle, stageMeta, inspectorTitle, inspectorCaption;
@@ -37,7 +37,6 @@ namespace StickerStudio
         double playOffset;
         bool playing;
         bool busy;
-        string statusInfo = "";
         bool showingResult;
 
         public EditorView()
@@ -52,8 +51,8 @@ namespace StickerStudio
         {
             // ---------- top command bar ----------
             toolbar = new Panel();
-            toolbar.Dock = DockStyle.Top;
-            toolbar.Height = Theme.S(72);
+            toolbar.Dock = DockStyle.None;
+            toolbar.Height = Theme.S(68);
             toolbar.BackColor = Theme.BackMain;
             toolbar.Paint += delegate(object sender, PaintEventArgs e)
             {
@@ -61,8 +60,8 @@ namespace StickerStudio
                     e.Graphics.DrawLine(p, 0, toolbar.Height - 1, toolbar.Width, toolbar.Height - 1);
             };
 
-            studioMark = new StudioMark();
-            studioMark.SetBounds(Theme.S(20), Theme.S(16), Theme.S(40), Theme.S(40));
+            studioMark = new UxLiveMark();
+            studioMark.SetBounds(Theme.S(18), Theme.S(13), Theme.S(42), Theme.S(42));
             toolbar.Controls.Add(studioMark);
 
             Label app = new Label();
@@ -70,25 +69,26 @@ namespace StickerStudio
             app.Text = "Sticker Studio";
             app.ForeColor = Theme.TextMain;
             app.Font = new Font("Segoe UI Semibold", 12.5f);
-            app.Location = new Point(Theme.S(72), Theme.S(15));
+            app.Location = new Point(Theme.S(71), Theme.S(12));
             toolbar.Controls.Add(app);
 
             Label appMeta = new Label();
             appMeta.AutoSize = true;
-            appMeta.Text = "CREATIVE WORKSPACE";
+            appMeta.Text = "UX Live  /  видеостикеры Telegram";
             appMeta.ForeColor = Theme.TextMuted;
-            appMeta.Font = new Font("Segoe UI Semibold", 7.25f);
-            appMeta.Location = new Point(Theme.S(73), Theme.S(40));
+            appMeta.Font = new Font("Segoe UI", 9f);
+            appMeta.Location = new Point(Theme.S(72), Theme.S(37));
             toolbar.Controls.Add(appMeta);
 
             fileLabel = new Label();
             fileLabel.ForeColor = Theme.TextMuted;
             fileLabel.TextAlign = ContentAlignment.MiddleLeft;
             fileLabel.Font = new Font("Segoe UI", 9f);
+            fileLabel.AutoEllipsis = true;
             toolbar.Controls.Add(fileLabel);
 
-            btnBack = MakeBtn("", "Новое видео", 0, Theme.S(132));
-            btnUndo = MakeBtn("", "Отменить", 0, Theme.S(112));
+            btnBack = MakeBtn(StudioIcon.Back, "Новое видео", 0, Theme.S(132));
+            btnUndo = MakeBtn(StudioIcon.Undo, "Отменить", 0, Theme.S(112));
             btnBack.Ghost = true;
             btnUndo.Border = true;
             toolbar.Controls.Add(btnBack);
@@ -96,16 +96,17 @@ namespace StickerStudio
 
             btnBack.Click += delegate { if (!busy && BackRequested != null) BackRequested(); };
             btnUndo.Click += delegate { DoUndo(); };
+            tips.SetToolTip(btnBack, "Открыть другое видео (Ctrl+O)");
             tips.SetToolTip(btnUndo, "Откатить последнее действие (Ctrl+Z)");
 
             // ---------- workspace shell ----------
             content = new Panel();
-            content.Dock = DockStyle.Fill;
+            content.Dock = DockStyle.None;
             content.BackColor = Theme.BackMain;
 
             toolRail = new Panel();
             toolRail.Dock = DockStyle.Left;
-            toolRail.Width = Theme.S(88);
+            toolRail.Width = Theme.S(84);
             toolRail.BackColor = Theme.BackPanel;
             toolRail.Paint += delegate(object sender, PaintEventArgs e)
             {
@@ -114,21 +115,21 @@ namespace StickerStudio
             };
 
             Label toolsLabel = new Label();
-            toolsLabel.Text = "TOOLS";
+            toolsLabel.Text = "Инструменты";
             toolsLabel.TextAlign = ContentAlignment.MiddleCenter;
             toolsLabel.ForeColor = Theme.TextMuted;
-            toolsLabel.Font = new Font("Segoe UI Semibold", 7.25f);
-            toolsLabel.SetBounds(0, Theme.S(15), toolRail.Width, Theme.S(20));
+            toolsLabel.Font = new Font("Segoe UI", 9f);
+            toolsLabel.SetBounds(0, Theme.S(13), toolRail.Width, Theme.S(22));
             toolRail.Controls.Add(toolsLabel);
 
-            btnCrop = MakeToolBtn("", "Кроп", Theme.S(45));
-            btnKey = MakeToolBtn("", "Фон", Theme.S(119));
+            btnCrop = MakeToolBtn(StudioIcon.Crop, "Обрезать", Theme.S(43));
+            btnKey = MakeToolBtn(StudioIcon.Background, "Убрать фон", Theme.S(119));
             btnCrop.Click += delegate { StartCrop(); };
             btnKey.Click += delegate { OpenKeyPanel(); };
             toolRail.Controls.Add(btnCrop);
             toolRail.Controls.Add(btnKey);
-            tips.SetToolTip(btnCrop, "Выбрать квадратную зону стикера (512×512)");
-            tips.SetToolTip(btnKey, "Убрать однотонный фон (хромакей)");
+            tips.SetToolTip(btnCrop, "Выбрать квадратную зону стикера 512 × 512 (C)");
+            tips.SetToolTip(btnKey, "Убрать однотонный фон (B)");
 
             mainColumn = new Panel();
             mainColumn.Dock = DockStyle.Fill;
@@ -148,7 +149,7 @@ namespace StickerStudio
             stageMeta = new Label();
             stageMeta.ForeColor = Theme.TextMuted;
             stageMeta.TextAlign = ContentAlignment.MiddleRight;
-            stageMeta.Font = new Font("Segoe UI", 8.5f);
+            stageMeta.Font = new Font("Segoe UI", 9f);
             stageHost.Controls.Add(stageMeta);
 
             preview = new PreviewControl();
@@ -166,19 +167,17 @@ namespace StickerStudio
             };
 
             timelineTitle = new Label();
-            timelineTitle.Text = "ФРАГМЕНТ";
+            timelineTitle.Text = "Фрагмент";
             timelineTitle.ForeColor = Theme.TextMuted;
-            timelineTitle.Font = new Font("Segoe UI Semibold", 7.25f);
+            timelineTitle.Font = new Font("Segoe UI Semibold", 9f);
             bottomBar.Controls.Add(timelineTitle);
 
             btnPlay = new StyledButton();
-            btnPlay.Glyph = "";
-            btnPlay.GlyphSize = 14f;
+            btnPlay.Icon = StudioIcon.Play;
             btnPlay.RoundFull = true;
             btnPlay.Accent = true;
-            btnPlay.GlyphNudge = new Point(Theme.S(1), 0); // оптический центр стрелки
             btnPlay.Click += delegate { TogglePlay(); };
-            tips.SetToolTip(btnPlay, "Play/Pause (Пробел) — зациклено внутри CUT, без звука");
+            tips.SetToolTip(btnPlay, "Воспроизведение / пауза (Пробел). Без звука.");
 
             timeline = new TimelineControl();
             timeline.SeekRequested += OnSeek;
@@ -188,7 +187,7 @@ namespace StickerStudio
             timeLabel = new Label();
             timeLabel.ForeColor = Theme.TextMuted;
             timeLabel.TextAlign = ContentAlignment.MiddleRight;
-            timeLabel.Font = new Font("Consolas", 8.75f);
+            timeLabel.Font = new Font("Consolas", 9f);
 
             bottomBar.Controls.Add(btnPlay);
             bottomBar.Controls.Add(timeline);
@@ -197,7 +196,7 @@ namespace StickerStudio
             // ---------- readiness / tool inspector ----------
             inspector = new Panel();
             inspector.Dock = DockStyle.Right;
-            inspector.Width = Theme.S(310);
+            inspector.Width = Theme.S(300);
             inspector.BackColor = Theme.BackPanel;
             inspector.Paint += delegate(object sender, PaintEventArgs e)
             {
@@ -214,7 +213,7 @@ namespace StickerStudio
             inspectorCaption = new Label();
             inspectorCaption.Text = "Проверка перед экспортом";
             inspectorCaption.ForeColor = Theme.TextMuted;
-            inspectorCaption.Font = new Font("Segoe UI", 8.5f);
+            inspectorCaption.Font = new Font("Segoe UI", 9f);
             inspector.Controls.Add(inspectorCaption);
 
             BuildDefaultInspector();
@@ -224,12 +223,12 @@ namespace StickerStudio
             statusLabel = new Label();
             statusLabel.ForeColor = Theme.TextMuted;
             statusLabel.TextAlign = ContentAlignment.TopLeft;
-            statusLabel.Font = new Font("Segoe UI", 8.5f);
+            statusLabel.Font = new Font("Segoe UI", 9f);
             inspector.Controls.Add(statusLabel);
 
             btnExport = new StyledButton();
-            btnExport.Glyph = "";
-            btnExport.Text = "Собрать WebM";
+            btnExport.Icon = StudioIcon.Export;
+            btnExport.Text = "Экспортировать WebM";
             btnExport.Font = new Font("Segoe UI Semibold", 10f);
             btnExport.Click += delegate { DoExport(); };
             inspector.Controls.Add(btnExport);
@@ -246,6 +245,9 @@ namespace StickerStudio
             Controls.Add(content);
             Controls.Add(toolbar);
 
+            Resize += delegate { LayoutShell(); };
+            LayoutShell();
+
             LayoutToolbar();
             LayoutStage();
             LayoutBottomBar();
@@ -254,6 +256,13 @@ namespace StickerStudio
             playTimer = new System.Windows.Forms.Timer();
             playTimer.Interval = 15;
             playTimer.Tick += delegate { PlayTick(); };
+        }
+
+        void LayoutShell()
+        {
+            toolbar.SetBounds(0, 0, ClientSize.Width, Theme.S(68));
+            content.SetBounds(0, toolbar.Bottom, ClientSize.Width,
+                Math.Max(0, ClientSize.Height - toolbar.Height));
         }
 
         void LayoutBottomBar()
@@ -273,8 +282,8 @@ namespace StickerStudio
             int W = toolbar.ClientSize.Width;
             btnBack.SetBounds(W - Theme.S(276), Theme.S(18), Theme.S(132), Theme.S(38));
             btnUndo.SetBounds(W - Theme.S(132), Theme.S(18), Theme.S(112), Theme.S(38));
-            fileLabel.SetBounds(Theme.S(230), Theme.S(17),
-                Math.Max(Theme.S(120), W - Theme.S(530)), Theme.S(38));
+            fileLabel.SetBounds(Theme.S(230), Theme.S(20),
+                Math.Max(Theme.S(120), W - Theme.S(530)), Theme.S(26));
         }
 
         void LayoutStage()
@@ -282,8 +291,13 @@ namespace StickerStudio
             int W = stageHost.ClientSize.Width;
             int H = stageHost.ClientSize.Height;
             stageTitle.SetBounds(Theme.S(24), Theme.S(18), Theme.S(180), Theme.S(24));
-            stageMeta.SetBounds(Math.Max(Theme.S(210), W - Theme.S(250)), Theme.S(18),
-                Theme.S(226), Theme.S(24));
+            stageMeta.Visible = W >= Theme.S(360);
+            if (stageMeta.Visible)
+            {
+                int metaX = Math.Max(Theme.S(190), W - Theme.S(220));
+                stageMeta.SetBounds(metaX, Theme.S(18),
+                    Math.Max(Theme.S(94), W - metaX - Theme.S(24)), Theme.S(24));
+            }
             preview.SetBounds(Theme.S(14), Theme.S(48),
                 Math.Max(Theme.S(80), W - Theme.S(28)), Math.Max(Theme.S(80), H - Theme.S(62)));
         }
@@ -330,12 +344,12 @@ namespace StickerStudio
             readinessCard.FillColor = Theme.SurfaceRaised;
             readinessCard.BackColor = Theme.SurfaceRaised;
             readinessCard.StrokeColor = Theme.BorderIdle;
-            readinessCard.Radius = 16;
+            readinessCard.Radius = 12;
 
             readinessBadge = new PillLabel();
-            readinessBadge.Text = "ПРОВЕРЯЮ";
+            readinessBadge.Text = "Проверка";
             readinessBadge.Tone = Theme.Accent;
-            readinessBadge.Dot = true;
+            readinessBadge.Dot = false;
             readinessBadge.Strong = true;
 
             readinessTitle = new Label();
@@ -346,26 +360,26 @@ namespace StickerStudio
             readinessDetail = new Label();
             readinessDetail.Text = "Проверяю параметры исходника";
             readinessDetail.ForeColor = Theme.TextMuted;
-            readinessDetail.Font = new Font("Segoe UI", 8.25f);
+            readinessDetail.Font = new Font("Segoe UI", 9f);
 
             readinessCard.Controls.Add(readinessBadge);
             readinessCard.Controls.Add(readinessTitle);
             readinessCard.Controls.Add(readinessDetail);
 
             cropBadge = new PillLabel();
-            cropBadge.Text = "Кроп 1:1";
-            cropBadge.Dot = true;
+            cropBadge.Text = "Квадрат 1:1";
+            cropBadge.Dot = false;
             cropBadge.Tone = Theme.TextMuted;
 
             keyBadge = new PillLabel();
             keyBadge.Text = "Фон";
-            keyBadge.Dot = true;
+            keyBadge.Dot = false;
             keyBadge.Tone = Theme.TextMuted;
 
             sourceInfo = new Label();
             sourceInfo.ForeColor = Theme.TextMuted;
-            sourceInfo.Font = new Font("Segoe UI", 8.5f);
-            sourceInfo.Text = "ИСХОДНИК\n—";
+            sourceInfo.Font = new Font("Segoe UI", 9f);
+            sourceInfo.Text = "Исходник\nНет данных";
 
             inspectorDefault.Controls.Add(readinessCard);
             inspectorDefault.Controls.Add(cropBadge);
@@ -380,36 +394,30 @@ namespace StickerStudio
             cropPanel.BackColor = Theme.BackPanel;
             cropPanel.Visible = false;
 
-            Label eyebrow = MakeInspectorLabel("ИНСТРУМЕНТ", 7.25f, Theme.Accent, true);
-            eyebrow.SetBounds(Theme.S(20), Theme.S(8), Theme.S(250), Theme.S(20));
-            Label title = MakeInspectorLabel("Квадратный кроп", 14f, Theme.TextMain, true);
-            title.SetBounds(Theme.S(20), Theme.S(32), Theme.S(270), Theme.S(30));
             cropHint = MakeInspectorLabel(
-                "Перемещайте рамку за центр и тяните за углы. Итог всегда будет 512 × 512.",
-                8.75f, Theme.TextMuted, false);
-            cropHint.SetBounds(Theme.S(20), Theme.S(70), Theme.S(270), Theme.S(58));
+                "Перемещайте рамку за центр и тяните за углы. Результат будет 512 × 512.",
+                9f, Theme.TextMuted, false);
+            cropHint.SetBounds(Theme.S(20), Theme.S(10), Theme.S(270), Theme.S(58));
 
             PillLabel ratio = new PillLabel();
-            ratio.Text = "1 : 1   •   512 PX";
+            ratio.Text = "Выход  /  512 × 512";
             ratio.Tone = Theme.Accent;
-            ratio.Dot = true;
-            ratio.SetBounds(Theme.S(20), Theme.S(142), Theme.S(170), Theme.S(30));
+            ratio.Dot = false;
+            ratio.SetBounds(Theme.S(20), Theme.S(82), Theme.S(180), Theme.S(30));
 
             btnCropApply = new StyledButton();
-            btnCropApply.Glyph = "";
-            btnCropApply.Text = "Применить кроп";
+            btnCropApply.Icon = StudioIcon.Check;
+            btnCropApply.Text = "Применить обрезку";
             btnCropApply.Accent = true;
             btnCropApply.Font = new Font("Segoe UI Semibold", 9.5f);
             btnCropCancel = new StyledButton();
-            btnCropCancel.Glyph = "";
+            btnCropCancel.Icon = StudioIcon.Close;
             btnCropCancel.Text = "Отмена";
             btnCropCancel.Ghost = true;
             btnCropCancel.Border = true;
             btnCropApply.Click += delegate { ApplyCrop(); };
             btnCropCancel.Click += delegate { CancelCrop(); };
 
-            cropPanel.Controls.Add(eyebrow);
-            cropPanel.Controls.Add(title);
             cropPanel.Controls.Add(cropHint);
             cropPanel.Controls.Add(ratio);
             cropPanel.Controls.Add(btnCropApply);
@@ -423,49 +431,46 @@ namespace StickerStudio
             keyPanel.BackColor = Theme.BackPanel;
             keyPanel.Visible = false;
 
-            Label eyebrow = MakeInspectorLabel("ИНСТРУМЕНТ", 7.25f, Theme.Accent2, true);
-            eyebrow.SetBounds(Theme.S(20), Theme.S(8), Theme.S(250), Theme.S(20));
-            Label title = MakeInspectorLabel("Удаление фона", 14f, Theme.TextMain, true);
-            title.SetBounds(Theme.S(20), Theme.S(32), Theme.S(270), Theme.S(30));
             Label hint = MakeInspectorLabel(
                 "Выберите цвет на видео, затем уточните края маски.",
-                8.75f, Theme.TextMuted, false);
-            hint.SetBounds(Theme.S(20), Theme.S(68), Theme.S(270), Theme.S(42));
+                9f, Theme.TextMuted, false);
+            hint.SetBounds(Theme.S(20), Theme.S(10), Theme.S(270), Theme.S(42));
 
             btnPick = new StyledButton();
             btnPick.Text = "Выбрать цвет на видео";
+            btnPick.Icon = StudioIcon.Eyedropper;
             btnPick.Border = true;
             btnPick.SwatchColor = Color.FromArgb(0, 255, 0);
             btnPick.Click += delegate { TogglePick(); };
             tips.SetToolTip(btnPick, "Кликните по цвету фона на видео");
 
-            lbGain = MakeInspectorLabel("Сила удаления  ·  100", 8.75f, Theme.TextSoft, true);
+            lbGain = MakeInspectorLabel("Сила удаления: 100", 9f, Theme.TextSoft, true);
             slGain = new NiceSlider();
             slGain.Minimum = 0; slGain.Maximum = 200; slGain.Value = 100;
+            slGain.AccessibleName = "Сила удаления фона";
             slGain.ValueChanged += delegate { OnKeyParamChanged(); };
             tips.SetToolTip(slGain, "Сила вырезания фона");
 
-            lbShrink = MakeInspectorLabel("Край маски  ·  0", 8.75f, Theme.TextSoft, true);
+            lbShrink = MakeInspectorLabel("Край маски: 0", 9f, Theme.TextSoft, true);
             slShrink = new NiceSlider();
             slShrink.Minimum = -100; slShrink.Maximum = 100; slShrink.Value = 0;
+            slShrink.AccessibleName = "Край маски";
             slShrink.ValueChanged += delegate { OnKeyParamChanged(); };
             tips.SetToolTip(slShrink, "Поджать (−) или расширить (+) края маски");
 
             btnKeyApply = new StyledButton();
-            btnKeyApply.Glyph = "";
+            btnKeyApply.Icon = StudioIcon.Check;
             btnKeyApply.Text = "Применить фон";
             btnKeyApply.Accent = true;
             btnKeyApply.Font = new Font("Segoe UI Semibold", 9.5f);
             btnKeyCancel = new StyledButton();
-            btnKeyCancel.Glyph = "";
+            btnKeyCancel.Icon = StudioIcon.Close;
             btnKeyCancel.Text = "Отмена";
             btnKeyCancel.Ghost = true;
             btnKeyCancel.Border = true;
             btnKeyApply.Click += delegate { ApplyKey(); };
             btnKeyCancel.Click += delegate { CancelKey(); };
 
-            keyPanel.Controls.Add(eyebrow);
-            keyPanel.Controls.Add(title);
             keyPanel.Controls.Add(hint);
             keyPanel.Controls.Add(btnPick);
             keyPanel.Controls.Add(lbGain);
@@ -499,36 +504,37 @@ namespace StickerStudio
         {
             int pad = Theme.S(20);
             int innerW = W - pad * 2;
-            btnPick.SetBounds(pad, Theme.S(112), innerW, Theme.S(42));
-            lbGain.SetBounds(pad, Theme.S(166), innerW, Theme.S(24));
-            slGain.SetBounds(pad, Theme.S(190), innerW, Theme.S(32));
-            lbShrink.SetBounds(pad, Theme.S(226), innerW, Theme.S(24));
-            slShrink.SetBounds(pad, Theme.S(250), innerW, Theme.S(32));
-            btnKeyApply.SetBounds(pad, Math.Max(Theme.S(292), H - Theme.S(102)),
-                innerW, Theme.S(44));
+            btnPick.SetBounds(pad, Theme.S(54), innerW, Theme.S(40));
+            lbGain.SetBounds(pad, Theme.S(104), innerW, Theme.S(22));
+            slGain.SetBounds(pad, Theme.S(126), innerW, Theme.S(28));
+            lbShrink.SetBounds(pad, Theme.S(160), innerW, Theme.S(22));
+            slShrink.SetBounds(pad, Theme.S(182), innerW, Theme.S(28));
+            int groupY = Math.Max(Theme.S(218), H - Theme.S(90));
+            btnKeyApply.SetBounds(pad, groupY, innerW, Theme.S(44));
             btnKeyCancel.SetBounds(pad, btnKeyApply.Bottom + Theme.S(8),
                 innerW, Theme.S(38));
         }
 
-        StyledButton MakeBtn(string glyph, string text, int x, int w)
+        StyledButton MakeBtn(StudioIcon icon, string text, int x, int w)
         {
             StyledButton b = new StyledButton();
-            b.Glyph = glyph;
+            b.Icon = icon;
             b.Text = text;
             b.SetBounds(x, Theme.S(13), w, Theme.S(36));
+            b.AccessibleName = text;
             return b;
         }
 
-        StyledButton MakeToolBtn(string glyph, string text, int y)
+        StyledButton MakeToolBtn(StudioIcon icon, string text, int y)
         {
             StyledButton b = new StyledButton();
-            b.Glyph = glyph;
-            b.GlyphSize = 15f;
+            b.Icon = icon;
             b.Text = text;
             b.Vertical = true;
             b.Ghost = true;
-            b.Font = new Font("Segoe UI Semibold", 8.25f);
-            b.SetBounds(Theme.S(10), y, Theme.S(68), Theme.S(66));
+            b.Font = new Font("Segoe UI Semibold", 9f);
+            b.SetBounds(Theme.S(7), y, Theme.S(70), Theme.S(70));
+            b.AccessibleName = text;
             return b;
         }
 
@@ -562,20 +568,18 @@ namespace StickerStudio
             playing = false;
             playOffset = 0;
             playClock.Reset();
-            btnPlay.Glyph = "";
+            btnPlay.Icon = StudioIcon.Play;
             btnPlay.Invalidate();
             busy = false;
             showingResult = false;
 
-            statusInfo = d.Info.Width + "×" + d.Info.Height +
-                "  •  " + d.Info.Duration.ToString("0.0") + " с  •  " +
-                (d.SourceHasAlpha ? "с альфа-каналом" : "без альфа-канала");
-            fileLabel.Text = Path.GetFileName(d.SourcePath) + "   •   " + statusInfo;
-            stageMeta.Text = "CANVAS  ·  " + (d.CropApplied ? "512 × 512" : d.Info.Width + " × " + d.Info.Height);
-            sourceInfo.Text = "ИСХОДНИК\n" + Path.GetFileName(d.SourcePath) + "\n" +
-                d.Info.Width + " × " + d.Info.Height + "   ·   " +
-                d.Info.Duration.ToString("0.0") + " с   ·   " +
-                (d.Info.Fps > 0 ? d.Info.Fps.ToString("0.##") + " fps" : "fps —");
+            fileLabel.Text = Path.GetFileName(d.SourcePath) + "  /  " +
+                d.Info.Width + " × " + d.Info.Height;
+            stageMeta.Text = "Холст  /  " + (d.CropApplied ? "512 × 512" : d.Info.Width + " × " + d.Info.Height);
+            sourceInfo.Text = "Исходник\n" + Path.GetFileName(d.SourcePath) + "\n" +
+                d.Info.Width + " × " + d.Info.Height + "  /  " +
+                d.Info.Duration.ToString("0.0") + " с  /  " +
+                (d.Info.Fps > 0 ? d.Info.Fps.ToString("0.##") + " fps" : "fps: нет данных");
 
             preview.SetFrame(d.FrameAt(d.State.CutStart));
             UpdateButtons();
@@ -612,51 +616,51 @@ namespace StickerStudio
             btnExport.Accent = !blocked && !busy;
             btnExport.Enabled = !busy;
             // замок объясняет блокировку с первого взгляда (E72E Lock / E74E Save)
-            btnExport.Glyph = blocked ? "" : "";
-            btnExport.Text = busy ? "Экспортирую…" : (blocked ? "Сначала выбрать кроп" : "Собрать WebM");
+            btnExport.Icon = blocked ? StudioIcon.Lock : StudioIcon.Export;
+            btnExport.Text = busy ? "Экспортирую…" : (blocked ? "Сначала обрезать кадр" : "Экспортировать WebM");
             btnExport.Invalidate();
             tips.SetToolTip(btnExport, blocked
-                ? "Видео больше 512px — сначала нажмите «Crop 1:1» и выберите зону стикера"
-                : "Сделать стикер: WebM ≤256 КБ + обход лимита 3 сек");
+                ? "Видео больше 512 px. Сначала выберите квадратную область."
+                : "Экспортировать WebM до 256 КБ (Ctrl+E)");
 
             btnCrop.SetChecked(doc != null && doc.CropApplied);
             btnKey.SetChecked(doc != null && doc.State.Key.Enabled);
 
-            readinessBadge.Text = blocked ? "НУЖЕН КРОП" : "ГОТОВО К ЭКСПОРТУ";
+            readinessBadge.Text = blocked ? "Нужна обрезка" : "Готово к экспорту";
             readinessBadge.Tone = blocked ? Theme.Warn : Theme.Ok;
             readinessBadge.Invalidate();
             readinessTitle.Text = blocked ? "Остался один шаг" : "Все проверки пройдены";
             readinessDetail.Text = blocked
-                ? "Выберите квадратную область для стикера."
+                ? "Выберите квадрат 1:1 для стикера."
                 : "WebM будет собран под лимит 256 КБ.";
 
             cropBadge.Text = doc != null && doc.CropApplied
-                ? "Кроп 1:1  ·  выбран"
-                : (blocked ? "Кроп 1:1  ·  обязателен" : "Кроп 1:1  ·  не требуется");
+                ? "Квадрат 1:1  /  выбран"
+                : (blocked ? "Квадрат 1:1  /  обязателен" : "Квадрат 1:1  /  не требуется");
             cropBadge.Tone = doc != null && doc.CropApplied ? Theme.Ok : (blocked ? Theme.Warn : Theme.TextMuted);
             cropBadge.Invalidate();
 
             if (doc != null && doc.SourceHasAlpha)
             {
-                keyBadge.Text = "Альфа-канал  ·  сохранится";
+                keyBadge.Text = "Альфа-канал  /  сохранится";
                 keyBadge.Tone = Theme.Ok;
             }
             else
             {
                 keyBadge.Text = doc != null && doc.State.Key.Enabled
-                    ? "Фон  ·  удаляется"
-                    : "Фон  ·  без обработки";
+                    ? "Фон  /  удаляется"
+                    : "Фон  /  без обработки";
                 keyBadge.Tone = doc != null && doc.State.Key.Enabled ? Theme.Accent2 : Theme.TextMuted;
             }
             keyBadge.Invalidate();
-            stageMeta.Text = "CANVAS  ·  " + (doc != null && doc.CropApplied
-                ? "512 × 512" : (doc != null ? doc.Info.Width + " × " + doc.Info.Height : "—"));
+            stageMeta.Text = "Холст  /  " + (doc != null && doc.CropApplied
+                ? "512 × 512" : (doc != null ? doc.Info.Width + " × " + doc.Info.Height : "Нет данных"));
 
             if (!busy && !showingResult)
             {
                 statusLabel.ForeColor = blocked ? Theme.Warn : Theme.TextMuted;
                 statusLabel.Text = blocked
-                    ? "Кроп обязателен: исходник больше 512 px."
+                    ? "Обрезка обязательна: исходник больше 512 px."
                     : "Готово к экспорту. Результат появится рядом с исходником.";
             }
         }
@@ -670,7 +674,7 @@ namespace StickerStudio
         {
             if (doc == null) return;
             timeLabel.Text = string.Format(CultureInfo.InvariantCulture,
-                "{0:0.0} с   /   {1:0.0}–{2:0.0}   ·   {3:0.0} с",
+                "{0:0.0} с   /   {1:0.0}–{2:0.0}   /   {3:0.0} с",
                 timeline.Position, doc.State.CutStart, doc.State.CutEnd, doc.CutDuration);
         }
 
@@ -679,7 +683,7 @@ namespace StickerStudio
         {
             if (doc == null || busy) return;
             playing = !playing;
-            btnPlay.Glyph = playing ? "" : "";
+            btnPlay.Icon = playing ? StudioIcon.Pause : StudioIcon.Play;
             btnPlay.Invalidate();
             if (playing)
             {
@@ -821,8 +825,8 @@ namespace StickerStudio
 
         void UpdateKeyLabels()
         {
-            lbGain.Text = "Сила удаления  ·  " + slGain.Value;
-            lbShrink.Text = "Край маски  ·  " + (slShrink.Value > 0 ? "+" : "") + slShrink.Value;
+            lbGain.Text = "Сила удаления: " + slGain.Value;
+            lbShrink.Text = "Край маски: " + (slShrink.Value > 0 ? "+" : "") + slShrink.Value;
         }
 
         void ApplyKey()
@@ -870,7 +874,7 @@ namespace StickerStudio
             keyPanel.Visible = false;
             statusLabel.Visible = false;
             btnExport.Visible = false;
-            inspectorTitle.Text = "Кроп 1:1";
+            inspectorTitle.Text = "Обрезка 1:1";
             inspectorCaption.Text = "Композиция будущего стикера";
             btnCrop.SetChecked(true);
         }
@@ -910,9 +914,9 @@ namespace StickerStudio
             if (ExportBlocked())
             {
                 MessageBox.Show(this,
-                    "Видео больше 512px, поэтому нужно выбрать квадратную зону стикера.\n" +
-                    "Нажмите «Crop 1:1», выделите зону и нажмите «Применить кроп».",
-                    "Сначала кроп", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    "Видео больше 512 px, поэтому нужно выбрать квадратную зону стикера.\n" +
+                    "Нажмите «Обрезать», выделите зону и примените обрезку.",
+                    "Сначала обрезка", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             if (playing) TogglePlay();
@@ -924,8 +928,8 @@ namespace StickerStudio
             if (doc.Info.Fps > 31)
             {
                 DialogResult fr = MessageBox.Show(this,
-                    "У видео " + doc.Info.Fps.ToString("0.##") + " fps — выше лимита Telegram (30).\n" +
-                    "Telegram может отклонить такой стикер.\n\nСделать как надо — пересчитать в 30 fps?",
+                    "У видео " + doc.Info.Fps.ToString("0.##") + " fps, это выше лимита Telegram (30).\n" +
+                    "Telegram может отклонить такой стикер.\n\nПересчитать видео в 30 fps?",
                     "FPS выше 30", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                 snapshot.Fps30 = (fr == DialogResult.Yes);
             }
@@ -978,7 +982,7 @@ namespace StickerStudio
             statusLabel.Text = (r.FpsWarning ? "⚠ " : "✓ ") + "Готово → " +
                 Path.GetFileName(r.OutputPath) + " (" + kb +
                 (r.AlphaInOutput ? ", с альфой" : ", без альфы") + ")" +
-                (r.FpsWarning ? " — fps выше 30, Telegram может отклонить" : "");
+                (r.FpsWarning ? ". Частота выше 30 fps, Telegram может отклонить файл" : "");
 
             DialogResult d = MessageBox.Show(this,
                 "Стикер готов: " + Path.GetFileName(r.OutputPath) + " (" + kb + ")\n\nПоказать в Проводнике?",
@@ -1000,10 +1004,29 @@ namespace StickerStudio
         public bool HandleKey(Keys keyData)
         {
             if (doc == null || busy) return false;
+            if (keyData == (Keys.Control | Keys.O))
+            {
+                if (BackRequested != null) BackRequested();
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.E)) { DoExport(); return true; }
+            if (keyData == Keys.C) { StartCrop(); return true; }
+            if (keyData == Keys.B && btnKey.Visible) { OpenKeyPanel(); return true; }
+            if (keyData == Keys.Escape)
+            {
+                if (preview.CropMode) { CancelCrop(); return true; }
+                if (keyPanel.Visible) { CloseKeyPanel(false); return true; }
+                if (playing) { TogglePlay(); return true; }
+                return false;
+            }
             if (keyData == Keys.Space)
             {
-                // не воруем пробел у слайдеров/кнопок в фокусе — но у нас
-                // нет текстовых полей, так что глобальный play/pause безопасен
+                if (btnBack.Focused || btnUndo.Focused || btnCrop.Focused || btnKey.Focused ||
+                    btnPlay.Focused || btnExport.Focused || btnPick.Focused ||
+                    btnCropApply.Focused || btnCropCancel.Focused ||
+                    btnKeyApply.Focused || btnKeyCancel.Focused ||
+                    slGain.Focused || slShrink.Focused)
+                    return false;
                 TogglePlay();
                 return true;
             }
